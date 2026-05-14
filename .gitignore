@@ -1,0 +1,11 @@
+*__pycache__*
+*.pyc
+*.git
+*.vscode
+*.log
+pretrained_models/stabilityai
+results
+wandb
+# Large eval-output dirs (kept local only)
+results_full_short
+results_simpler_demo
