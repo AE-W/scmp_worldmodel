@@ -28,10 +28,48 @@ Scalable robot learning in the real world is limited by the cost and safety issu
 
 ## Installation
 
-To set up the environment, run the following command:
+The stochastic-computing (SC) Triton kernels live in the shared
+[`scmp_kernels`](https://github.com/CrucibleComputingGroup/scmp_kernels) repo,
+vendored here as a git submodule at `kernels/`. Clone with submodules:
+
 ```bash
-bash scripts/install.sh
+git clone --recurse-submodules https://github.com/CrucibleComputingGroup/scmp_worldmodel.git
+cd scmp_worldmodel
+bash scripts/install.sh        # installs deps + `pip install -e ./kernels`
 ```
+
+If you cloned without `--recurse-submodules`:
+
+```bash
+git submodule update --init --recursive
+pip install -e ./kernels
+```
+
+To pull the latest SC kernels later (every SC application shares this repo, so
+fixes/upgrades land everywhere):
+
+```bash
+git submodule update --remote kernels
+# then commit the bumped submodule pointer
+```
+
+## Stochastic Computing (SC) backend
+
+The `models/sc_integration/` package swaps selected matmuls in the diffusion
+transformer for bipolar int8 SC, computed by the shared `scmp_kernels.sc_matmul`
+kernel:
+
+| op | granularity | replaces |
+|----|-------------|----------|
+| `sc_qk_matmul`     | `per_head`   | Q·Kᵀ attention scores |
+| `sc_av_matmul`     | `per_head`   | softmax·V |
+| `sc_linear_forward` / `SCMlp` | `per_tensor` | `nn.Linear` projections (qkv / proj / fc1 / fc2) |
+
+Which ops run on SC is driven by the `attention_mode` string in the config
+(presets in `models/sc_integration/sc_controller.py`), e.g. `sc_int8`
+(QK only) through `sc_int8_full` (all matmuls). Eval configs live under
+`configs/evaluation/bridge/frame_ada_sc*.yaml`. Per-block opt-outs are
+available via `set_skip_blocks()` / `clear_skip_blocks()`.
 
 ## Dataset
 

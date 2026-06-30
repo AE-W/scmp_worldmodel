@@ -1,10 +1,10 @@
-"""Int8 SC replacement for nn.Linear forward."""
+"""Per-tensor bipolar int8 SC replacement for nn.Linear forward."""
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
 
-from sc_triton import sc_matmul_enable_triton
+from scmp_kernels import sc_matmul
 
 from .sc_attention import _get_config
 
@@ -15,7 +15,7 @@ def sc_linear_forward(
     sc_prec: int = 8,
     stoc_len: int | None = None,
 ) -> torch.Tensor:
-    """Compute y = SC(x @ W^T) + bias with bipolar int8 SC.
+    """Compute y = SC(x @ Wᵀ) + bias with per-tensor bipolar int8 SC.
 
     Args:
         x:      (..., in_dim) FP tensor
@@ -32,14 +32,16 @@ def sc_linear_forward(
     w = linear.weight.float().contiguous()  # (out_dim, in_dim)
 
     config = _get_config(in_dim, sc_prec)
-    y = sc_matmul_enable_triton(
+    # per_tensor: one (max, min) over the whole matrix for each operand —
+    # matches the previous sc_matmul_enable_triton behavior. sc_matmul
+    # computes x_flat @ w.T == x @ Wᵀ.
+    y = sc_matmul(
         x_flat, w,
-        x_flat.max().item(), x_flat.min().item(),
-        w.max().item(), w.min().item(),
+        granularity="per_tensor",
         mode="bipolar",
         sc_prec=sc_prec,
-        config=config,
         stoc_len=stoc_len,
+        config=config,
     )
     if linear.bias is not None:
         y = y + linear.bias.float()
