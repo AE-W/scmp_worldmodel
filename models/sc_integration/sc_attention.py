@@ -9,12 +9,18 @@ local kernel orchestration needed.
 """
 from __future__ import annotations
 
+import os
+
 import torch
 
 from scmp_kernels import sc_matmul
 from scmp_kernels.sc.config_helpers import make_sobol_simple_config
 
 _CONFIG_CACHE: dict[tuple[int, int], dict] = {}
+
+# SC_HALVE=1: uSystolic bipolar stream halving (stoc_len=None lets the kernel
+# derive 2**(sc_prec-1)). Same knob as sc_linear.py / scmp_diffusion.
+_HALVE = os.environ.get("SC_HALVE") == "1"
 
 
 def _get_config(contraction_dim: int, sc_prec: int) -> dict:
@@ -50,7 +56,7 @@ def sc_qk_matmul(
         (B, H, N, N) attention logits in q_scaled.dtype.
     """
     B, H, N, D = q_scaled.shape
-    if stoc_len is None:
+    if stoc_len is None and not _HALVE:
         stoc_len = 2 ** sc_prec
     config = _get_config(D, sc_prec)
 
@@ -64,6 +70,7 @@ def sc_qk_matmul(
         sc_prec=sc_prec,
         stoc_len=stoc_len,
         config=config,
+        halve_bipolar_stoc_len=_HALVE,
     )
     return out.reshape(B, H, N, N).to(q_scaled.dtype)
 
@@ -87,7 +94,7 @@ def sc_av_matmul(
     """
     B, H, N, Nk = attn.shape
     _, _, _, D = v.shape
-    if stoc_len is None:
+    if stoc_len is None and not _HALVE:
         stoc_len = 2 ** sc_prec
     # Inner contraction dim for attn·V is Nk (key/sequence length).
     config = _get_config(Nk, sc_prec)
@@ -104,5 +111,6 @@ def sc_av_matmul(
         sc_prec=sc_prec,
         stoc_len=stoc_len,
         config=config,
+        halve_bipolar_stoc_len=_HALVE,
     )
     return out.reshape(B, H, N, D).to(attn.dtype)

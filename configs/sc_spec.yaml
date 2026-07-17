@@ -1,0 +1,62 @@
+# =============================================================================
+# SC 硬件规格(组内约定,权威版)— 2026-07-16 由用户口述固化
+# 本文件是"规格"而非可执行配置:描述目标硬件的 SC 行为,评测配置须与其对齐。
+# 改动需组内确认;实验若偏离此规格,必须在结果里显式标注。
+# =============================================================================
+
+sc_spec:
+  # --- 量化 / 编码 ---
+  quantization: symmetric          # 对称量化(bipolar 模式的 grouped_symmetric)
+  encoding: bipolar                # 双极性随机流
+  # kernel 映射: sc_matmul(mode="bipolar"), quant/_grouped_symmetric_quant
+
+  # --- Scrambling ---
+  scrambling:
+    kind: index_bitrev             # 按维度 index 取模 + 全宽 bit-reverse 掩码
+    total_masks: 64                # 硬件可实现的不同掩码数(HW_MAX_MASKS=64)
+    # kernel 映射(当前即默认值,无需设 env):
+    #   SC_OWEN_MODE=bitrev  SC_SCRAMBLE_MASKS=64
+    # 注意: kernels PR#24 之后 bitrev 是全宽 scramble;M=64 是硬件上限。
+
+  # --- Uniform vs heterogeneous ---
+  # int8 只跑 uniform(单一流长);更低 logic 精度允许 heterogeneous(MP 混合档位)。
+  int8_policy: uniform_only
+
+  # --- 精度阶梯 (logic bits × 平均流长) ---
+  # "Logic intN" = 量化格点位宽; "avgL" = (MP 混合后的)平均 stoc_len。
+  # halve(uSystolic 符号-幅值)生效时,流长活在减半空间: 上限 2^(bits-1)。
+  #   ⇒ halve 模式下不存在 192/256 这样的流长;avg 值是混合平均,不是单一流长。
+  #
+  # 【组内已确认 2026-07-16】异构混合的档位集合固定为四档:
+  mp_levels: [128, 96, 64, 32]
+  # 【fractions = 搜索问题(组内指示:比例自己搜)】
+  # 约束: sum(f)=1, f≥0, dot(f, levels)=avg 目标  → 每个 avg 目标是单纯形上
+  # 的一个 2 自由度切片。搜索协议:
+  #   1) 在切片上取网格(含边界组合,如 avg96 的 [128,64] 对半 / [96]=1.0 /
+  #      [128,96,64,32] 加权),每组合快扫 (DPM10, n=8, diverse 样本);
+  #   2) 按 latent L2 排序,top-3 用 PNDM50 + 更大 n 复验;
+  #   3) 优胜组合回填到 precision_ladder.fractions,并存 results/mp_search/。
+  # 行→档位的运行时分派按重要性排序(|x|.amax(-1) 分位数,scmp_llm 同款)。
+  precision_ladder:
+    - {logic_bits: 8, avg_stoc_len: 192, policy: uniform,       # int8 只 uniform
+       note: "非 halve 空间的名义档;halve 生效时 uniform=128 (2^7)"}
+    - {logic_bits: 7, avg_stoc_len: 96, policy: heterogeneous,
+       levels: [128, 96, 64, 32], fractions: calibrate_to_avg}
+    - {logic_bits: 6, avg_stoc_len: 48, policy: heterogeneous,
+       levels: [128, 96, 64, 32], fractions: calibrate_to_avg}
+    - {logic_bits: 5, avg_stoc_len: null, policy: heterogeneous,
+       levels: [128, 96, 64, 32], fractions: calibrate_to_avg}   # avg 待组内给
+    - {logic_bits: 4, avg_stoc_len: null, policy: heterogeneous,
+       levels: [128, 96, 64, 32], fractions: calibrate_to_avg}   # avg 待组内给
+
+# =============================================================================
+# 与规格兼容、已确认启用的优化(不改变上述硬件语义):
+#   per_row 量化粒度  : SC_LINEAR_GRANULARITY=per_row   [已实装, +6dB 实证]
+#   halve 流长减半    : SC_HALVE=1                       [已实装, 探针验证中]
+#   SmoothQuant       : sc_matmul(smooth_scales=...)     [接线中, α=0.5]
+#   chunk_d 内维分块  : 宽 D linear (fc2 D=4608) 用       [待接]
+#   MP 档位(异构)     : 仅 logic<8 时启用, 见 precision_ladder [待接, 需校准]
+#   per-row QK        : scmp_diffusion PR#6 语义          [待评估]
+# 不启用: timewise/layerwise 部分覆盖(组内实际全覆盖跑法)、noise-model 代理
+# (仅限探索, 不入正式结果)。
+# =============================================================================
