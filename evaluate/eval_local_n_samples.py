@@ -175,6 +175,9 @@ def main():
     p.add_argument("--scheduler", choices=["PNDM", "DPM"], default="PNDM")
     p.add_argument("--shard", type=int, default=0)
     p.add_argument("--num_shards", type=int, default=1)
+    p.add_argument("--keys_file", default=None,
+                   help="JSON list of sample keys to evaluate (e.g. diverse_300.json); "
+                        "overrides the default sorted-first-N selection")
     p.add_argument("--out_root", default=os.environ.get(
         "EVAL_OUT_ROOT", "/home/dingqy/Bench/IRASim/results/local_n_eval"))
     p.add_argument("--naive_int8", action="store_true",
@@ -213,7 +216,11 @@ def main():
           f"steps={args.infer_num_sampling_steps} sched={cli.scheduler}", flush=True)
 
     # Decide which samples to handle this shard.
-    all_files = sorted(f for f in os.listdir(GT_LATENT_DIR) if f.endswith(".pt"))[: cli.num_samples]
+    if getattr(cli, "keys_file", None):   # explicit diverse-sample list
+        keys = json.load(open(cli.keys_file))[: cli.num_samples]
+        all_files = [f"{k}.pt" for k in keys]
+    else:
+        all_files = sorted(f for f in os.listdir(GT_LATENT_DIR) if f.endswith(".pt"))[: cli.num_samples]
     shard_files = all_files[cli.shard::cli.num_shards]
     print(f"[shard {cli.shard}] {len(shard_files)}/{len(all_files)} samples", flush=True)
 

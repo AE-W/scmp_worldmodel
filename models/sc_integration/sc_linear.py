@@ -23,6 +23,74 @@ from .sc_attention import _get_config
 _GRANULARITY = os.environ.get("SC_LINEAR_GRANULARITY", "per_tensor")
 _HALVE = os.environ.get("SC_HALVE") == "1"
 
+# ---- mixed precision (heterogeneous stream lengths) -------------------------
+# SC_MP_CONFIG='{"stoc_len_levels":[128,96,64,32],"level_fractions":[...]}'
+#   rows are ranked by |x|.amax(-1) and bucketed into the levels (same policy as
+#   scmp_diffusion / scmp_llm), then each bucket runs sc_matmul at its own
+#   stoc_len. Per group spec, MP is only for logic<8; int8 stays uniform.
+# SC_PREC=7|8 sets the quantization grid; SC_MP_FIXED_PREC=1 keeps sc_prec
+#   pinned instead of deriving it per level (both variants are to be measured).
+_MP_CONFIG = None
+if os.environ.get("SC_MP_CONFIG"):
+    import json as _json
+    from scmp_kernels.mp import MPConfig as _MPConfig
+    _spec = _json.loads(os.environ["SC_MP_CONFIG"])
+    _MP_CONFIG = _MPConfig(stoc_len_levels=_spec["stoc_len_levels"],
+                           level_fractions=_spec.get("level_fractions"))
+_SC_PREC = int(os.environ.get("SC_PREC", "8"))
+_MP_FIXED_PREC = os.environ.get("SC_MP_FIXED_PREC") == "1"
+# SC_UNIFORM_STOC_LEN: force a fixed stream length for the uniform ladder
+# configs (sc_int8=128 / sc_int7=64 / sc_int6=32). Overrides the halve default.
+_UNIFORM_STOC_LEN = os.environ.get("SC_UNIFORM_STOC_LEN")
+_UNIFORM_STOC_LEN = int(_UNIFORM_STOC_LEN) if _UNIFORM_STOC_LEN else None
+
+
+def _resolve_sc_prec(stoc_len: int, default_prec: int) -> int:
+    """Per-level sc_prec: pinned, or derived as ceil(log2(stoc_len))."""
+    if _MP_FIXED_PREC:
+        return default_prec
+    import math
+    return max(1, min(default_prec, int(math.ceil(math.log2(max(stoc_len, 2))))))
+
+
+def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype):
+    """Mixed-precision path: bucket rows by importance, one sc_matmul per level.
+
+    Mirrors scmp_diffusion's SCLinear MP forward — rows ranked by |x|.amax(-1),
+    quantile-bucketed into MPConfig.stoc_len_levels, each bucket run at its own
+    stream length, results scattered back.
+    """
+    from scmp_kernels.mp import classify_rows_by_metric
+
+    in_dim = x_flat.shape[-1]
+    out_features = w.shape[0]
+    smooth = getattr(linear, "_sc_smooth_scales", None)
+
+    row_metric = x_flat.abs().amax(dim=-1)
+    assignment = classify_rows_by_metric(
+        row_metric, _MP_CONFIG.stoc_len_levels, _MP_CONFIG.level_fractions)
+
+    out = torch.zeros(x_flat.shape[0], out_features,
+                      device=x_flat.device, dtype=torch.float32)
+    for sl, rows in assignment.level_row_indices.items():
+        if len(rows) == 0 or sl == 0:      # level 0 == pruned rows, leave zeros
+            continue
+        sp = _resolve_sc_prec(sl, sc_prec)
+        idx = rows if torch.is_tensor(rows) else torch.as_tensor(rows, device=x_flat.device)
+        out[idx] = sc_matmul(
+            x_flat[idx].contiguous(), w,
+            granularity=_GRANULARITY,
+            mode="bipolar",
+            sc_prec=sp,
+            stoc_len=sl,
+            config=_get_config(in_dim, sp),
+            halve_bipolar_stoc_len=_HALVE,
+            smooth_scales=smooth,
+        )
+    if linear.bias is not None:
+        out = out + linear.bias.float()
+    return out.reshape(*orig_shape[:-1], -1).to(out_dtype)
+
 
 def sc_linear_forward(
     x: torch.Tensor,
@@ -38,7 +106,10 @@ def sc_linear_forward(
     Returns:
         (..., out_dim) tensor in x.dtype
     """
-    if stoc_len is None and not _HALVE:
+    sc_prec = _SC_PREC if sc_prec == 8 else sc_prec  # SC_PREC env overrides default
+    if _UNIFORM_STOC_LEN is not None:      # uniform ladder: fixed stream length
+        stoc_len = _UNIFORM_STOC_LEN
+    elif stoc_len is None and not _HALVE:
         stoc_len = 2 ** sc_prec
     # with SC_HALVE=1 keep stoc_len=None: the kernel then runs the bipolar
     # stream at 2**(sc_prec-1) (uSystolic sign-magnitude trick, lossless).
@@ -47,6 +118,9 @@ def sc_linear_forward(
     in_dim = orig_shape[-1]
     x_flat = x.reshape(-1, in_dim).float().contiguous()
     w = linear.weight.float().contiguous()  # (out_dim, in_dim)
+
+    if _MP_CONFIG is not None:
+        return _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, x.dtype)
 
     config = _get_config(in_dim, sc_prec)
     # SmoothQuant: calibration (evaluate/calibrate_smoothquant.py) attaches a

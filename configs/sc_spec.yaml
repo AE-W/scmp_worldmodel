@@ -27,8 +27,26 @@ sc_spec:
   # halve(uSystolic 符号-幅值)生效时,流长活在减半空间: 上限 2^(bits-1)。
   #   ⇒ halve 模式下不存在 192/256 这样的流长;avg 值是混合平均,不是单一流长。
   #
-  # 【组内已确认 2026-07-16】异构混合的档位集合固定为四档:
-  mp_levels: [128, 96, 64, 32]
+  # 【HPCA 规范 2026-07-22, 来源 scmp_llm:feat/mp-config-wiring 的 hpca 脚本】
+  # 【组内确认 2026-07-23】kernel sc_prec 恒 = 8;实验变的是"平均周期(流长)"。
+  #   "int7/int6" 不是把量化格点降到 7/6,而是该平均周期对标的等效 INT 宽度。
+  #   levels 值本身就是 halved 周期数(hpca line13: "sc_prec=8, halve ON, tag
+  #   value IS the cycle count"), 直接喂 kernel, 不再减半。
+  # 名义流长 = 2 x 平均周期。规格里的 "Avg192" = 名义 192 = 96 周期。
+  # 等效 INT 宽度 = ceil(log2(2*avg)):  128/96 -> int8, 64/48 -> int7, 32 -> int6
+  # 【组内确认 2026-07-23】sc_prec 恒=8; "int 系列=uniform, avg 系列=heterogeneous(MP)"
+  #   int8/int7/int6: uniform — 所有行同一流长(= avg_cycles)
+  #   avg192/avg96:   MP     — 按行重要性分档混合(fractions 由校准解出)
+  hpca_configs:
+    sc_int8:   {type: uniform, sc_prec: 8, uniform_stoc_len: 128, avg_cycles: 128}
+    sc_int7:   {type: uniform, sc_prec: 8, uniform_stoc_len: 64,  avg_cycles: 64}
+    sc_int6:   {type: uniform, sc_prec: 8, uniform_stoc_len: 32,  avg_cycles: 32}
+    sc_avg192: {type: mp, sc_prec: 8, mp_levels: [128, 96, 64], budget_ratio: 0.75, ref: 128, avg_cycles: 96}
+    sc_avg96:  {type: mp, sc_prec: 8, mp_levels: [64, 48, 32],  budget_ratio: 0.75, ref: 64,  avg_cycles: 48}
+  # MP fractions 由 evaluate/calibrate_mp_fractions.py(拉格朗日预算分配)解出,
+  # 不是自由参数、也不是等分。
+  # 完整 baseline 矩阵(HPCA): fp16 + W{8,7,6,5,4}A{同} x {symm, asymm} = 11 组
+  mp_levels_legacy: [128, 96, 64, 32]   # 早期口径, 已被上表取代
   # 【fractions = 搜索问题(组内指示:比例自己搜)】
   # 约束: sum(f)=1, f≥0, dot(f, levels)=avg 目标  → 每个 avg 目标是单纯形上
   # 的一个 2 自由度切片。搜索协议:
