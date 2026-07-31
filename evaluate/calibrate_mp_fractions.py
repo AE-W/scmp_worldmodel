@@ -50,6 +50,23 @@ HPCA = {
     # anchoring at 48 keeps the same 3-level shape as the other MP tiers and
     # avoids reusing a coarser grid than the budget needs.
     "sc_avg80":  dict(sc_prec=8, levels=[48, 40, 32],  ratio=0.625, ref=64),
+
+    # ---- level-set ablation ------------------------------------------------
+    # The 3-level {ref, 0.75ref, 0.5ref} shape above spans only 2x, which caps
+    # how much budget MP can move: at target 96 at most 50% of rows can reach
+    # 128. The scmp_llm ladder uses 5-8 levels spanning ~4x for the same
+    # targets (its target-96 set, [128,96,64,48,32], is identical across 4B /
+    # 8B / 14B / 30B). These entries vary LEVEL COUNT and SPAN independently so
+    # the two can be told apart:
+    #   _w5 = scmp_llm's set verbatim   (5 levels, 4x span)
+    #   _n5 = 5 levels at the OLD 2x span (isolates level count)
+    #   _w7 = 7 levels, 8x span          (pushes span further)
+    "sc_avg192_w5": dict(sc_prec=8, levels=[128, 96, 64, 48, 32],         ratio=0.75, ref=128),
+    "sc_avg192_n5": dict(sc_prec=8, levels=[128, 112, 96, 80, 64],        ratio=0.75, ref=128),
+    "sc_avg192_w7": dict(sc_prec=8, levels=[128, 96, 64, 48, 32, 24, 16], ratio=0.75, ref=128),
+    "sc_avg96_w5":  dict(sc_prec=8, levels=[64, 48, 32, 24, 16],          ratio=0.75, ref=64),
+    "sc_avg96_n5":  dict(sc_prec=8, levels=[64, 56, 48, 40, 32],          ratio=0.75, ref=64),
+    "sc_avg96_w7":  dict(sc_prec=8, levels=[128, 96, 64, 48, 32, 24, 16], ratio=0.375, ref=128),
 }
 TARGET_SUFFIXES = ("attn.qkv", "attn.proj", "mlp.fc1", "mlp.fc2")
 
