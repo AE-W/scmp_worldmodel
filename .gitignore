@@ -12,3 +12,4 @@ wandb
 # Large eval-output dirs (kept local only)
 results_full_short
 results_simpler_demo
+robotdata

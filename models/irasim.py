@@ -89,7 +89,7 @@ class Attention(nn.Module):
             configure(self.attention_mode)  # idempotent
             b = self.block_idx
 
-            qkv_out = sc_linear_forward(x, self.qkv) if is_op_enabled("qkv", b) else self.qkv(x)
+            qkv_out = sc_linear_forward(x, self.qkv, op="qkv", block_idx=b) if is_op_enabled("qkv", b) else self.qkv(x)
             qkv = qkv_out.reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).contiguous()
             q, k, v = qkv.unbind(0)
             q_scaled = q * self.scale
@@ -107,7 +107,7 @@ class Attention(nn.Module):
                 x = (attn @ v).transpose(1, 2).reshape(B, N, C)
 
             if is_op_enabled("proj", b):
-                x = sc_linear_forward(x, self.proj)
+                x = sc_linear_forward(x, self.proj, op="proj", block_idx=b)
                 x = self.proj_drop(x)
                 return x
             # fall through to standard proj below

@@ -23,9 +23,9 @@ class SCMlp(nn.Module):
 
     def forward(self, x):
         b = self.block_idx
-        x = sc_linear_forward(x, self.fc1) if is_op_enabled("mlp_fc1", b) else self.fc1(x)
+        x = sc_linear_forward(x, self.fc1, op="mlp_fc1", block_idx=b) if is_op_enabled("mlp_fc1", b) else self.fc1(x)
         x = self.act(x)
         x = self.drop1(x)
-        x = sc_linear_forward(x, self.fc2) if is_op_enabled("mlp_fc2", b) else self.fc2(x)
+        x = sc_linear_forward(x, self.fc2, op="mlp_fc2", block_idx=b) if is_op_enabled("mlp_fc2", b) else self.fc2(x)
         x = self.drop2(x)
         return x

@@ -44,6 +44,12 @@ HPCA = {
     "sc_int7":   dict(sc_prec=8, levels=[128, 64, 32], ratio=0.50, ref=128),
     "sc_avg96":  dict(sc_prec=8, levels=[64, 48, 32],  ratio=0.75, ref=64),
     "sc_int6":   dict(sc_prec=8, levels=[64, 48, 32],  ratio=0.50, ref=64),
+    # 6.32-bit MP tier (nominal L = 80 = 2 x 40 halved cycles). Levels are
+    # shifted down so the 40-cycle budget lands INSIDE [48, 32] — with the
+    # sc_avg96 level set [64,48,32] a 40 budget would still be interior, but
+    # anchoring at 48 keeps the same 3-level shape as the other MP tiers and
+    # avoids reusing a coarser grid than the budget needs.
+    "sc_avg80":  dict(sc_prec=8, levels=[48, 40, 32],  ratio=0.625, ref=64),
 }
 TARGET_SUFFIXES = ("attn.qkv", "attn.proj", "mlp.fc1", "mlp.fc2")
 
@@ -161,10 +167,28 @@ def main():
     fractions = (counts / counts.sum()).tolist()
     achieved = float(np.dot(fractions, levels))
 
+    # The Lagrangian above already lets budget FLOW ACROSS modules: a module
+    # with steeper error curves takes more of its rows at the high levels.
+    # Collapsing `assign` to one global fraction triple throws that away and
+    # spends an identical average on every (operator, block) — which is why a
+    # global-fraction MP schedule measured no better than uniform at matched
+    # budget. Keep the per-module split the solver actually produced.
+    per_module, off = {}, 0
+    for (name, _chunks), err in zip(caps.items(), all_err):
+        n_rows = err.shape[0]
+        c = np.bincount(assign[off:off + n_rows], minlength=len(levels))
+        f = (c / max(c.sum(), 1)).tolist()
+        per_module[name] = {"level_fractions": [round(v, 4) for v in f],
+                            "avg_cycles": round(float(np.dot(f, levels)), 2),
+                            "n_rows": int(n_rows)}
+        off += n_rows
+    assert off == E.shape[0], f"row bookkeeping mismatch: {off} vs {E.shape[0]}"
+
     out = {"config_name": cli.config_name, "sc_prec": sc_prec, "stoc_len_levels": levels,
            "level_fractions": [round(f, 4) for f in fractions],
            "target_avg_cycles": budget_per_row, "achieved_avg_cycles": round(achieved, 2),
-           "n_rows_calibrated": int(E.shape[0])}
+           "n_rows_calibrated": int(E.shape[0]),
+           "per_module_fractions": per_module}
     os.makedirs(os.path.dirname(cli.out) or ".", exist_ok=True)
     json.dump(out, open(cli.out, "w"), indent=2)
     print(json.dumps(out, indent=2), flush=True)

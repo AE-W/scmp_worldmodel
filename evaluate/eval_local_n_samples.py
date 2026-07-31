@@ -183,6 +183,10 @@ def main():
     p.add_argument("--naive_int8", action="store_true",
                    help="replace SC kernels with naive per-tensor int8 fake-quant "
                         "(uniform quantization baseline); ops still selected by attention_mode")
+    p.add_argument("--naive_bits", type=int, default=8,
+                   help="bit width for --naive_int8 (WxAx, x=bits); 8 reproduces the original baseline")
+    p.add_argument("--naive_asymm", action="store_true",
+                   help="use asymmetric (zero-point) quantization instead of symmetric for --naive_int8")
     cli = p.parse_args()
 
     args = build_args(cli.config, cli.inference_steps)
@@ -190,8 +194,10 @@ def main():
 
     if cli.naive_int8:
         from evaluate.eval_with_naive_int8 import install_naive_int8_patches
-        install_naive_int8_patches()
-        print("naive int8 patches installed over sc_* kernels", flush=True)
+        install_naive_int8_patches(bits=cli.naive_bits, asymm=cli.naive_asymm)
+        b = cli.naive_bits
+        print(f"naive W{b}A{b}_{'asymm' if cli.naive_asymm else 'symm'} patches "
+              f"installed over sc_* kernels", flush=True)
 
     device = torch.device("cuda:0")
     vae = AutoencoderKL.from_pretrained(args.vae_model_path, subfolder="vae").to(device).eval()

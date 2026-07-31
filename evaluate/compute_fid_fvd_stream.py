@@ -22,10 +22,12 @@ from scipy import linalg
 BRIDGE = os.environ.get("BRIDGE_ROOT", "/home/qiuyid/scmp_worldmodel/robotdata/opensource_robotdata/bridge")
 GT_DIR = f"{BRIDGE}/evaluation_videos/test_sample_videos"
 FID_CACHE = f"{BRIDGE}/evaluation_cache/test_fid_cache.npz"
-EM = "/edrive2/qiuyid/robotdata/opensource_robotdata/opensource_robotdata/evaluation_model"
+# Detector weights live next to the dataset (dataset_dir/evaluation_model) —
+# overridable so the same script runs on any machine.
+EM = os.environ.get("SCMP_EVAL_MODEL_DIR", os.path.join(os.path.dirname(BRIDGE), "evaluation_model"))
 INCEPTION_PTH = f"{EM}/pt_inception-2015-12-05-6726825d.pth"
 I3D_PT = f"{EM}/i3d_torchscript.pt"
-GT_FVD_STATS = "/edrive2/qiuyid/gt_fvd_stats_bridge.npz"
+GT_FVD_STATS = os.environ.get("SCMP_GT_FVD_STATS", "results/gt_fvd_stats_bridge.npz")
 
 
 def frechet(mu1, s1, mu2, s2, eps=1e-6):

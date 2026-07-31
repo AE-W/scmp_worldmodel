@@ -9,8 +9,9 @@ Usage:
 import argparse, os, sys
 from huggingface_hub import HfApi
 
-TOKEN_FILE = "/home/qiuyid/huggingface_api_cmu.txt"
-ROOT = "/home/qiuyid/scmp_worldmodel"
+# Overridable so the same script works on any machine (PSC, workstation, ...).
+TOKEN_FILE = os.environ.get("SCMP_HF_TOKEN_FILE", "/home/qiuyid/huggingface_api_cmu.txt")
+ROOT = os.environ.get("SCMP_ROOT", "/home/qiuyid/scmp_worldmodel")
 
 
 def main():
@@ -43,6 +44,16 @@ def main():
             folder_path=f"{ROOT}/configs/evaluation/bridge", path_in_repo="configs_bridge",
             repo_id=repo_id, repo_type="dataset", allow_patterns=["*.yaml"],
         )
+    # Calibration artifacts are small but need a GPU to regenerate, and the
+    # blanket *.pt ignore above drops them (this is how smoothquant_scales.pt
+    # went missing). Upload them explicitly, size-guarded.
+    for name in ("smoothquant_scales.pt",):
+        f = f"{ROOT}/results/{name}"
+        if os.path.isfile(f) and os.path.getsize(f) < 512 * 2**20:
+            api.upload_file(path_or_fileobj=f, path_in_repo=f"results/{name}",
+                            repo_id=repo_id, repo_type="dataset")
+            print(f"uploaded {name} ({os.path.getsize(f)/2**20:.1f} MB)")
+
     print("backup done")
 
 

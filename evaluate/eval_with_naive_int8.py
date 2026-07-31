@@ -36,13 +36,33 @@ from util import update_paths
 import imageio
 
 
+# Bit width / symmetry for the integer baseline. Set by install_naive_int8_patches();
+# the defaults reproduce the original per-tensor symmetric int8 path exactly.
+_QUANT_BITS = 8
+_QUANT_ASYMM = False
+
+
 def _q_int8_per_tensor(x: torch.Tensor) -> torch.Tensor:
-    """Per-tensor symmetric int8 fake-quant of x. Returns dequantized fp32 tensor."""
+    """Per-tensor fake-quant of x at _QUANT_BITS. Returns dequantized fp32 tensor.
+
+    symmetric:  q = round(x/s).clamp(-qmax, qmax),  s = max|x| / qmax,  qmax = 2^(b-1)-1
+    asymmetric: q = (round(x/s)+z).clamp(0, qmax),  s = (max-min) / qmax, qmax = 2^b - 1
+    """
     if x.numel() == 0:
         return x.float()
-    amax = x.detach().abs().amax().clamp_min(1e-8)
-    scale = amax / 127.0
-    q = (x.float() / scale).round().clamp(-127, 127)
+    xf = x.float()
+    if _QUANT_ASYMM:
+        qmax = float(2 ** _QUANT_BITS - 1)
+        xmin = xf.detach().amin()
+        xmax = xf.detach().amax()
+        scale = ((xmax - xmin) / qmax).clamp_min(1e-8)
+        zp = (-xmin / scale).round()
+        q = ((xf / scale).round() + zp).clamp(0, qmax)
+        return (q - zp) * scale
+    qmax = float(2 ** (_QUANT_BITS - 1) - 1)
+    amax = xf.detach().abs().amax().clamp_min(1e-8)
+    scale = amax / qmax
+    q = (xf / scale).round().clamp(-qmax, qmax)
     return q * scale
 
 
@@ -66,7 +86,12 @@ def naive_int8_linear_forward(x: torch.Tensor, linear, sc_prec: int = 8, stoc_le
     return y.to(x.dtype)
 
 
-def install_naive_int8_patches():
+def install_naive_int8_patches(bits: int = 8, asymm: bool = False):
+    """Swap the SC kernels for plain WxAx fake-quant matmuls (x = `bits`)."""
+    global _QUANT_BITS, _QUANT_ASYMM
+    if not 2 <= bits <= 8:
+        raise ValueError(f"naive quant bits must be in [2,8], got {bits}")
+    _QUANT_BITS, _QUANT_ASYMM = bits, asymm
     sc_attention.sc_qk_matmul = naive_int8_qk
     sc_attention.sc_av_matmul = naive_int8_av
     sc_linear.sc_linear_forward = naive_int8_linear_forward

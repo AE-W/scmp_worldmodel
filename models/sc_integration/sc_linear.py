@@ -31,12 +31,35 @@ _HALVE = os.environ.get("SC_HALVE") == "1"
 # SC_PREC=7|8 sets the quantization grid; SC_MP_FIXED_PREC=1 keeps sc_prec
 #   pinned instead of deriving it per level (both variants are to be measured).
 _MP_CONFIG = None
+# Per-(operator, block) fractions. A single global fraction triple spends the
+# SAME average budget on every operator and block, so the only mixing it does
+# is within a layer by |x| magnitude — at matched budget that measured no
+# better than uniform. SC_MP_PER_MODULE points at a calibration JSON whose
+# "per_module_fractions" keeps the split the Lagrangian solver actually
+# produced, letting budget flow across layers/operators.
+_MP_PER_MODULE = None      # {(op, block_idx): [fractions]}
 if os.environ.get("SC_MP_CONFIG"):
     import json as _json
     from scmp_kernels.mp import MPConfig as _MPConfig
     _spec = _json.loads(os.environ["SC_MP_CONFIG"])
     _MP_CONFIG = _MPConfig(stoc_len_levels=_spec["stoc_len_levels"],
                            level_fractions=_spec.get("level_fractions"))
+if os.environ.get("SC_MP_PER_MODULE"):
+    import json as _json, re as _re
+    _pm = _json.load(open(os.environ["SC_MP_PER_MODULE"]))["per_module_fractions"]
+    _SUFFIX_TO_OP = {"attn.qkv": "qkv", "attn.proj": "proj",
+                     "mlp.fc1": "mlp_fc1", "mlp.fc2": "mlp_fc2"}
+    _MP_PER_MODULE = {}
+    for _name, _d in _pm.items():
+        _m = _re.search(r"blocks\.(\d+)\.", _name)
+        if _m is None:
+            continue
+        for _suf, _op in _SUFFIX_TO_OP.items():
+            if _name.endswith(_suf):
+                _MP_PER_MODULE[(_op, int(_m.group(1)))] = _d["level_fractions"]
+                break
+    print(f"sc_mp: per-module fractions for {len(_MP_PER_MODULE)} (op, block) cells",
+          flush=True)
 _SC_PREC = int(os.environ.get("SC_PREC", "8"))
 _MP_FIXED_PREC = os.environ.get("SC_MP_FIXED_PREC") == "1"
 # SC_UNIFORM_STOC_LEN: force a fixed stream length for the uniform ladder
@@ -53,7 +76,8 @@ def _resolve_sc_prec(stoc_len: int, default_prec: int) -> int:
     return max(1, min(default_prec, int(math.ceil(math.log2(max(stoc_len, 2))))))
 
 
-def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype):
+def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
+                       op=None, block_idx=None):
     """Mixed-precision path: bucket rows by importance, one sc_matmul per level.
 
     Mirrors scmp_diffusion's SCLinear MP forward — rows ranked by |x|.amax(-1),
@@ -66,9 +90,13 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype):
     out_features = w.shape[0]
     smooth = getattr(linear, "_sc_smooth_scales", None)
 
+    fractions = _MP_CONFIG.level_fractions
+    if _MP_PER_MODULE is not None and op is not None and block_idx is not None:
+        fractions = _MP_PER_MODULE.get((op, block_idx), fractions)
+
     row_metric = x_flat.abs().amax(dim=-1)
     assignment = classify_rows_by_metric(
-        row_metric, _MP_CONFIG.stoc_len_levels, _MP_CONFIG.level_fractions)
+        row_metric, _MP_CONFIG.stoc_len_levels, fractions)
 
     out = torch.zeros(x_flat.shape[0], out_features,
                       device=x_flat.device, dtype=torch.float32)
@@ -97,6 +125,8 @@ def sc_linear_forward(
     linear: nn.Linear,
     sc_prec: int = 8,
     stoc_len: int | None = None,
+    op: str | None = None,
+    block_idx: int | None = None,
 ) -> torch.Tensor:
     """Compute y = SC(x @ Wᵀ) + bias with per-tensor bipolar int8 SC.
 
@@ -120,7 +150,7 @@ def sc_linear_forward(
     w = linear.weight.float().contiguous()  # (out_dim, in_dim)
 
     if _MP_CONFIG is not None:
-        return _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, x.dtype)
+        return _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, x.dtype, op=op, block_idx=block_idx)
 
     config = _get_config(in_dim, sc_prec)
     # SmoothQuant: calibration (evaluate/calibrate_smoothquant.py) attaches a

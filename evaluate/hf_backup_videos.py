@@ -9,8 +9,9 @@ Usage:  python3 evaluate/hf_backup_videos.py [--batch 400] [--pause 90]
 import argparse, os, time
 from huggingface_hub import HfApi
 
-TOKEN_FILE = "/home/qiuyid/huggingface_api_cmu.txt"
-ROOT = "/home/qiuyid/scmp_worldmodel/results"
+# Overridable so the same script works on any machine (PSC, workstation, ...).
+TOKEN_FILE = os.environ.get("SCMP_HF_TOKEN_FILE", "/home/qiuyid/huggingface_api_cmu.txt")
+ROOT = os.environ.get("SCMP_RESULTS", "/home/qiuyid/scmp_worldmodel/results")
 
 
 def main():
