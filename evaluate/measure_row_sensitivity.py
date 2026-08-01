@@ -92,8 +92,14 @@ def main():
             k = min(cli.rows_per_call, n)
             idx = torch.randperm(n, generator=gen)[:k].to(device)
             xs = x[idx] / s_dev if s_dev is not None else x[idx]
+            amax = xs.abs().amax(-1)
+            l2 = xs.norm(dim=-1)
+            # candidate dispatch metrics, mirroring scmp_llm's "auto" mode:
+            # the calibrator picks the best of amax / l2 / crest per module by
+            # rank correlation with the true weight, instead of assuming amax.
             captured[name] = {"out": out, "idx": idx,
-                              "metric": xs.abs().amax(-1).cpu()}
+                              "metric": amax.cpu(), "l2": l2.cpu(),
+                              "crest": (amax / (l2 + 1e-12)).cpu()}
         return hook
 
     for name, mod in model.named_modules():
@@ -151,7 +157,8 @@ def main():
                         g2 = g.detach().reshape(-1, g.shape[-1]).float()[c["idx"]]
                         g2 = g2.pow(2).sum(-1).cpu().numpy()
                         recs.setdefault((name, kind), []).append(
-                            np.stack([c["metric"].numpy(), g2], 1))
+                            np.stack([c["metric"].numpy(), c["l2"].numpy(),
+                                      c["crest"].numpy(), g2], 1))
             print(f"  {key} t={int(t)}: {len(recs)} modules recorded", flush=True)
 
     for h in hooks:
@@ -174,11 +181,13 @@ def main():
         return float((ra * rb).sum() / d) if d > 0 else float("nan")
 
     for want in ("eps", "pix"):
-        rhos = [spearman(m[:, 0], m[:, 1])
-                for (n, k), m in zip(names, mats) if k == want]
-        if rhos:
-            print(f"Spearman(metric, w_{want}): mean {np.mean(rhos):+.3f}  "
-                  f"P10 {np.percentile(rhos,10):+.3f}  P90 {np.percentile(rhos,90):+.3f}")
+        for ci, mname in ((0, "amax"), (1, "l2"), (2, "crest")):
+            rhos = [spearman(m[:, ci], m[:, 3])
+                    for (n, k), m in zip(names, mats) if k == want]
+            if rhos:
+                ab = [abs(r) for r in rhos]
+                print(f"Spearman({mname:5}, w_{want}): mean {np.mean(rhos):+.3f}  "
+                      f"mean|rho| {np.mean(ab):.3f}  P90|rho| {np.percentile(ab,90):.3f}")
     print("  >0: long streams belong to HIGH-metric rows (current direction)")
     print("  <0: long streams belong to LOW-metric rows (inverted direction)")
 

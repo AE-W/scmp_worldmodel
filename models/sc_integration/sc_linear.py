@@ -60,7 +60,14 @@ if os.environ.get("SC_MP_PER_MODULE"):
                 # flips sign per module, so each module carries its own
                 # ordering direction alongside its fractions.
                 _MP_PER_MODULE[(_op, int(_m.group(1)))] = {
-                    "fractions": _d["level_fractions"],
+                    "fractions": _d.get("level_fractions"),
+                    # scmp_llm's full mechanism: absolute thresholds on the
+                    # per-call min-max-normalised metric, and salient input
+                    # channels split out at a fixed high stream length with
+                    # row dispatch applied only to the residual columns.
+                    "thresholds": _d.get("thresholds"),
+                    "protected": _d.get("protected") or [],
+                    "protect_sl": _d.get("protect_sl"),
                     "invert": bool(_d.get("invert", False))}
                 break
     print(f"sc_mp: per-module fractions for {len(_MP_PER_MODULE)} (op, block) cells",
@@ -103,10 +110,45 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
 
     fractions = _MP_CONFIG.level_fractions
     mod_invert = False
+    thresholds = None
+    prot_idx = None
+    prot_sl = None
     if _MP_PER_MODULE is not None and op is not None and block_idx is not None:
         _ent = _MP_PER_MODULE.get((op, block_idx))
         if _ent is not None:
-            fractions, mod_invert = _ent["fractions"], _ent["invert"]
+            fractions = _ent["fractions"] or fractions
+            mod_invert = _ent["invert"]
+            thresholds = _ent.get("thresholds")
+            _pl = _ent.get("protected")
+            if _pl:
+                prot_idx = torch.as_tensor(sorted(set(int(i) for i in _pl)),
+                                           dtype=torch.long, device=x_flat.device)
+                prot_sl = int(_ent.get("protect_sl")
+                              or max(_MP_CONFIG.stoc_len_levels))
+
+    out_prot = None
+    if prot_idx is not None and prot_idx.numel() > 0:
+        # Salient-channel split (scmp_llm sc_common semantics): protected
+        # columns run at a fixed high stream length, the row dispatch below
+        # sees only the residual columns, and the partial products sum.
+        mask = torch.ones(in_dim, dtype=torch.bool, device=x_flat.device)
+        mask[prot_idx] = False
+        rest_idx = mask.nonzero(as_tuple=True)[0]
+        x_prot = x_flat.index_select(1, prot_idx).contiguous()
+        w_prot = w.index_select(1, prot_idx).contiguous()
+        sm_prot = (smooth.index_select(0, prot_idx).contiguous()
+                   if smooth is not None else None)
+        sp = _resolve_sc_prec(prot_sl, sc_prec)
+        out_prot = sc_matmul(
+            x_prot, w_prot, granularity=_GRANULARITY, mode="bipolar",
+            sc_prec=sp, stoc_len=prot_sl,
+            config=_get_config(int(prot_idx.numel()), sp),
+            halve_bipolar_stoc_len=_HALVE, smooth_scales=sm_prot)
+        x_flat = x_flat.index_select(1, rest_idx).contiguous()
+        w = w.index_select(1, rest_idx).contiguous()
+        smooth = (smooth.index_select(0, rest_idx).contiguous()
+                  if smooth is not None else None)
+        in_dim = int(rest_idx.numel())
 
     # Rank rows by the magnitude the kernel actually quantises. With
     # SmoothQuant attached, sc_matmul divides x by the per-channel scales
@@ -130,8 +172,27 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
     # rows are the quality bottleneck.
     if os.environ.get("SC_MP_INVERT") == "1" or mod_invert:
         row_metric = -row_metric
-    assignment = classify_rows_by_metric(
-        row_metric, _MP_CONFIG.stoc_len_levels, fractions)
+    if thresholds is not None:
+        # scmp_llm calibrated-table path: min-max normalise the metric per
+        # call, then bucket against absolute descending thresholds — the
+        # realised fractions adapt to each call's metric distribution.
+        levels_ = _MP_CONFIG.stoc_len_levels
+        m_min, m_max = row_metric.min(), row_metric.max()
+        if float(m_max - m_min) < 1e-8:
+            row_levels = torch.zeros(row_metric.shape[0], dtype=torch.long,
+                                     device=row_metric.device)
+        else:
+            mn = (row_metric - m_min) / (m_max - m_min)
+            th = torch.as_tensor(thresholds, dtype=mn.dtype, device=mn.device)
+            row_levels = (mn.unsqueeze(1) < th.unsqueeze(0)).sum(dim=1)
+        from scmp_kernels.mp.config import RowAssignment
+        assignment = RowAssignment(
+            row_levels=row_levels,
+            level_row_indices={sl: (row_levels == i).nonzero(as_tuple=True)[0]
+                               for i, sl in enumerate(levels_)})
+    else:
+        assignment = classify_rows_by_metric(
+            row_metric, _MP_CONFIG.stoc_len_levels, fractions)
 
     out = torch.zeros(x_flat.shape[0], out_features,
                       device=x_flat.device, dtype=torch.float32)
@@ -150,6 +211,8 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
             halve_bipolar_stoc_len=_HALVE,
             smooth_scales=smooth,
         )
+    if out_prot is not None:
+        out = out + out_prot
     if linear.bias is not None:
         out = out + linear.bias.float()
     return out.reshape(*orig_shape[:-1], -1).to(out_dtype)
