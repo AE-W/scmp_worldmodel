@@ -6,7 +6,9 @@
 #     diverse_10.json  diverse_100.json  final_sc_recipe.json
 #   以及 mp_fractions_sc_{g758,g658,g632,g600}.json (Gamma块级配置)
 #     step_sched_Wt.json (时间步W_t调度)
-#   —— 这些都在 HF 备份 BDXXN/scmp-worldmodel-progress 里, 或从本仓库 results/ 拷。
+#   —— 这些小产物(~5MB)已直接提交进本仓库 results/, git pull 即得,无需另拷。
+#   数据集 robotdata(133GB, bridge eval 子集): 若本机没有, 见 RUNNING_ON_SLURM.md §0.3
+#   下载, 或从已有机器 rsync。HF token 放 ~/hf_token.txt 用于回传。
 #
 # 用法: 每个函数是一个独立作业, 挑没跑完的投。SC ~350s/样本, n=10 单档 ~1h。
 set -e
@@ -64,5 +66,14 @@ case "${1:-help}" in
   g758) run_mp g758;;  g658) run_mp g658;;  g632) run_mp g632;;  g600) run_mp g600;;
   u758) run_uni u758 96;; u658) run_uni u658 48;; u632) run_uni u632 40;; u600) run_uni u600 32;;
   stepWt) run_stepWt;;  fullmp) run_fullmp;;
-  *) echo "用法: $0 {g758|g658|g632|g600|u758|u658|u632|u600|stepWt|fullmp}";;
+  upload)   # 把所有 scr10_* 结果 json 回传 HF (BDXXN/scmp-worldmodel-progress)
+    export SCMP_HF_TOKEN_FILE=${SCMP_HF_TOKEN_FILE:-$HOME/hf_token.txt}
+    export SCMP_ROOT=$PWD SCMP_RESULTS=$PWD/results
+    python evaluate/hf_backup.py ;;
+  all)      # 串行跑所有未完成档 + 回传 (每档~1h, SC 350s/样本)
+    for t in g758 g658 g632 g600; do [ -d results/local_n_eval/scr10_$t/metrics ] && [ $(ls results/local_n_eval/scr10_$t/metrics|wc -l) -ge 10 ] || run_mp $t; done
+    run_uni u758 96; run_uni u658 48; run_uni u632 40; run_uni u600 32
+    run_stepWt; run_fullmp
+    $0 upload ;;
+  *) echo "用法: $0 {g758|g658|g632|g600|u758|u658|u632|u600|stepWt|fullmp|upload|all}";;
 esac

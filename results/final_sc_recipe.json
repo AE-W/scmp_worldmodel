@@ -1,0 +1,23 @@
+{
+  "env": {
+    "SC_LINEAR_GRANULARITY": "per_row",
+    "SC_HALVE": "1",
+    "SC_SMOOTH_SCALES": "/home/qiuyid/scmp_worldmodel/results/smoothquant_scales.pt"
+  },
+  "skip": "mlp_fc1=4,25,26,27;mlp_fc2=0,2,4,5,6,7,10,13;qkv=3,6,7,25,27",
+  "decision_table": {
+    "sq=False,skip=True": [
+      23.91,
+      -0.1725
+    ],
+    "sq=True,skip=True": [
+      24.243,
+      -0.1693
+    ]
+  },
+  "chosen": {
+    "sq": true,
+    "skip": true,
+    "psnr": 24.243
+  }
+}
