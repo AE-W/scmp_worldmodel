@@ -56,7 +56,12 @@ if os.environ.get("SC_MP_PER_MODULE"):
             continue
         for _suf, _op in _SUFFIX_TO_OP.items():
             if _name.endswith(_suf):
-                _MP_PER_MODULE[(_op, int(_m.group(1)))] = _d["level_fractions"]
+                # Sensitivity calibration showed the metric-weight correlation
+                # flips sign per module, so each module carries its own
+                # ordering direction alongside its fractions.
+                _MP_PER_MODULE[(_op, int(_m.group(1)))] = {
+                    "fractions": _d["level_fractions"],
+                    "invert": bool(_d.get("invert", False))}
                 break
     print(f"sc_mp: per-module fractions for {len(_MP_PER_MODULE)} (op, block) cells",
           flush=True)
@@ -66,6 +71,12 @@ _MP_FIXED_PREC = os.environ.get("SC_MP_FIXED_PREC") == "1"
 # configs (sc_int8=128 / sc_int7=64 / sc_int6=32). Overrides the halve default.
 _UNIFORM_STOC_LEN = os.environ.get("SC_UNIFORM_STOC_LEN")
 _UNIFORM_STOC_LEN = int(_UNIFORM_STOC_LEN) if _UNIFORM_STOC_LEN else None
+# SC_STEP_SCHEDULE: JSON list of halved cycle counts, indexed by diffusion
+# step (resampled if its length differs from the sampler's step count).
+_STEP_SCHEDULE = None
+if os.environ.get("SC_STEP_SCHEDULE"):
+    import json as _json2
+    _STEP_SCHEDULE = [int(x) for x in _json2.loads(os.environ["SC_STEP_SCHEDULE"])]
 
 
 def _resolve_sc_prec(stoc_len: int, default_prec: int) -> int:
@@ -91,10 +102,34 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
     smooth = getattr(linear, "_sc_smooth_scales", None)
 
     fractions = _MP_CONFIG.level_fractions
+    mod_invert = False
     if _MP_PER_MODULE is not None and op is not None and block_idx is not None:
-        fractions = _MP_PER_MODULE.get((op, block_idx), fractions)
+        _ent = _MP_PER_MODULE.get((op, block_idx))
+        if _ent is not None:
+            fractions, mod_invert = _ent["fractions"], _ent["invert"]
 
-    row_metric = x_flat.abs().amax(dim=-1)
+    # Rank rows by the magnitude the kernel actually quantises. With
+    # SmoothQuant attached, sc_matmul divides x by the per-channel scales
+    # before per-row quantisation, so a row's SC error is set by
+    # max_j |x_j / s_j| — not by max_j |x_j|. The scales spread ~5x (up to
+    # 30x) across channels within one linear, so ranking on the raw amax
+    # systematically misorders rows and hands the long streams to the wrong
+    # ones; that misordering costs more than mixing gains (a wrong split is
+    # WORSE than uniform, see the shuffled-bucket control in the error-grid
+    # analysis). Rank on the smoothed activation instead.
+    if smooth is not None:
+        row_metric = (x_flat / smooth.to(x_flat.dtype)).abs().amax(dim=-1)
+    else:
+        row_metric = x_flat.abs().amax(dim=-1)
+    # SC_MP_INVERT=1 hands the long streams to the LOW-metric rows instead.
+    # Motivation: the more accurately rows are ranked by absolute matmul error
+    # (smoothed amax), the worse the end-to-end quality gets — which points to
+    # the PSNR-optimal allocation running in the opposite direction: per-row
+    # quantisation roughly equalises relative error, so high-magnitude rows
+    # carry structure that is robust to SC noise while low-magnitude detail
+    # rows are the quality bottleneck.
+    if os.environ.get("SC_MP_INVERT") == "1" or mod_invert:
+        row_metric = -row_metric
     assignment = classify_rows_by_metric(
         row_metric, _MP_CONFIG.stoc_len_levels, fractions)
 
@@ -137,7 +172,16 @@ def sc_linear_forward(
         (..., out_dim) tensor in x.dtype
     """
     sc_prec = _SC_PREC if sc_prec == 8 else sc_prec  # SC_PREC env overrides default
-    if _UNIFORM_STOC_LEN is not None:      # uniform ladder: fixed stream length
+    if _STEP_SCHEDULE is not None:
+        # Per-timestep schedule: uniform within a step, varying across steps at
+        # matched average. Needs no row-ordering signal — the step index is
+        # exact — which is why this axis survives the rho=0.02 finding that
+        # killed row-level MP.
+        from .sc_controller import get_current_step
+        _i, _n = get_current_step()
+        stoc_len = _STEP_SCHEDULE[min(_i * len(_STEP_SCHEDULE) // max(_n, 1),
+                                      len(_STEP_SCHEDULE) - 1)]
+    elif _UNIFORM_STOC_LEN is not None:    # uniform ladder: fixed stream length
         stoc_len = _UNIFORM_STOC_LEN
     elif stoc_len is None and not _HALVE:
         stoc_len = 2 ** sc_prec

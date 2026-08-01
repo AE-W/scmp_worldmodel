@@ -99,30 +99,74 @@ def measure(cli):
     for h in hooks:
         h.remove()
 
+    # Deployment passes smooth_scales into every MP sc_matmul call, so the
+    # error curves must be measured on the SAME smoothed matmul. Measuring
+    # without them (as the original calibrator did) optimises fractions on a
+    # different error landscape than the one deployment runs on — SmoothQuant
+    # rescales per-channel, which reorders per-row errors.
+    smooth_payload = None
+    if cli.smooth_scales:
+        smooth_payload = torch.load(cli.smooth_scales, map_location=device,
+                                    weights_only=False)["scales"]
+        print(f"  measuring WITH SmoothQuant scales ({len(smooth_payload)} linears)",
+              flush=True)
+
     named = dict(model.named_modules())
     all_err, all_module, order = [], [], []
+    all_refnorm, all_rowmetric = [], []
     for name, chunks in caps.items():
         X = torch.cat(chunks, 0)[: cli.max_rows].to(device)
         W = named[name].weight.detach().float()
         ref_out = X @ W.t()
+        smooth = smooth_payload.get(name) if smooth_payload else None
+        if smooth is not None:
+            smooth = smooth.to(device).float()
         errs = []
         for L in grid:
             with torch.no_grad():
                 y = sc_matmul(X, W, granularity="per_row", mode="bipolar",
                               sc_prec=8, stoc_len=L,
                               config=make_sobol_simple_config(X.shape[-1], X.shape[-1], 8),
-                              halve_bipolar_stoc_len=True)
+                              halve_bipolar_stoc_len=True,
+                              smooth_scales=smooth)
             errs.append(((y - ref_out) ** 2).mean(dim=-1).sqrt().cpu().numpy())
         all_err.append(np.stack(errs, 1))
         all_module.append(np.full(X.shape[0], len(order)))
+        # Needed to reconstruct scmp_llm's objective offline: its calibrator
+        # prices RELATIVE per-row L2 (||y-ref||/||ref||) through delta_sigma2,
+        # not the raw absolute RMSE above. Save the per-row ref norm plus the
+        # runtime ranking signal so `search` can re-derive both.
+        all_refnorm.append((ref_out ** 2).mean(dim=-1).sqrt().cpu().numpy())
+        xs = X / smooth if smooth is not None else X
+        all_rowmetric.append(xs.abs().amax(dim=-1).cpu().numpy())
         order.append(name)
         print(f"  error curve {name}: rows={X.shape[0]} levels={len(grid)}", flush=True)
 
     E = np.concatenate(all_err, 0)
     M = np.concatenate(all_module, 0)
     np.savez_compressed(cli.out, errors=E, module_idx=M,
+                        ref_norm=np.concatenate(all_refnorm, 0),
+                        row_metric=np.concatenate(all_rowmetric, 0),
                         grid=np.array(grid), modules=np.array(order))
     print(f"wrote {cli.out}: E{E.shape} over grid {grid}", flush=True)
+
+
+def llm_objective(E_abs, ref_norm, objective="delta_sigma2"):
+    """scmp_llm's calibration currency (benchmark/ppl/mp_objectives.py).
+
+    sigma is the RELATIVE per-row L2; delta_sigma2 prices only the error a row
+    gains by running below the longest stream, squared to penalise the
+    low-precision cliff superlinearly. Our original absolute-RMSE objective
+    kept neither the normalisation nor the delta nor the square.
+    """
+    sig = E_abs / np.maximum(ref_norm[:, None], 1e-8)
+    if objective == "sigma":
+        return sig
+    if objective == "sigma2":
+        return sig ** 2
+    if objective == "delta_sigma2":
+        return np.maximum(sig - sig[:, :1], 0.0) ** 2
+    raise ValueError(objective)
 
 
 def _assign(errors, costs, budget_total):
@@ -153,8 +197,17 @@ def _assign(errors, costs, budget_total):
     return best
 
 
-def score(E_sub, costs, budget_per_row):
-    """Mean assigned error for one candidate level set. Lower is better."""
+def score(E_sub, costs, budget_per_row, objective="abs"):
+    """Mean assigned error for one candidate level set. Lower is better.
+
+    E_sub columns must be in DESCENDING level order. For the scmp_llm
+    currencies E_sub is relative sigma and the transform runs here so that
+    delta_sigma2's baseline is this subset's own longest stream.
+    """
+    if objective == "sigma2":
+        E_sub = E_sub ** 2
+    elif objective == "delta_sigma2":
+        E_sub = np.maximum(E_sub - E_sub[:, :1], 0.0) ** 2
     n = E_sub.shape[0]
     a = _assign(E_sub, np.asarray(costs, dtype=np.float64), budget_per_row * n)
     return float(E_sub[np.arange(n), a].mean()), a
@@ -164,6 +217,17 @@ def search(cli):
     """Phase 2: exhaustive subset search over the measured grid."""
     d = np.load(cli.grid_file, allow_pickle=True)
     E_full, grid = d["errors"], [int(x) for x in d["grid"]]
+    objective = getattr(cli, "objective", "abs")
+    if objective != "abs":
+        if "ref_norm" not in d:
+            raise SystemExit("grid has no ref_norm; re-run measure for relative objectives")
+        # Convert to relative sigma only; the delta/square transform is applied
+        # inside score() AFTER subset columns are selected, because delta's
+        # baseline is the subset's own longest stream (its column 0 once
+        # descending) — applying it here against the ascending grid made the
+        # baseline L=16, the objective identically zero, and every search
+        # degenerate to the cheapest level.
+        E_full = E_full / np.maximum(d["ref_norm"][:, None], 1e-8)
     # Scoring a subset costs one Lagrangian solve over every row, and there are
     # up to ~18k subsets per (budget, k). Subsampling rows keeps the ranking
     # intact — the score is a mean over rows — while making the exhaustive
@@ -190,14 +254,14 @@ def search(cli):
             if not (min(lv) < budget < max(lv)):
                 continue
             n_tried += 1
-            s, _ = score(E_full[:, list(combo)][:, ::-1], lv, budget)
+            s, _ = score(E_full[:, list(combo)][:, ::-1], lv, budget, objective)
             if best is None or s < best[0]:
                 best = (s, lv)
         if best is None:
             print(f"k={k}: no feasible set brackets budget {budget}")
             continue
         s, lv = best
-        a = score(E_full[:, [grid.index(x) for x in lv]], lv, budget)[1]
+        a = score(E_full[:, [grid.index(x) for x in lv]], lv, budget, objective)[1]
         counts = np.bincount(a, minlength=k)
         fr = (counts / counts.sum()).tolist()
         # Rounding each fraction independently makes the sum drift off 1.0 by
@@ -303,6 +367,8 @@ def main():
     m.add_argument("--inference_steps", type=int, default=10)
     m.add_argument("--max_rows", type=int, default=4096)
     m.add_argument("--grid", default=None, help="comma-separated halved cycle counts")
+    m.add_argument("--smooth_scales", default="results/smoothquant_scales.pt",
+                   help="SmoothQuant scales applied in deployment; pass '' to measure without")
     m.add_argument("--out", required=True)
     m.set_defaults(func=measure)
 
@@ -312,6 +378,9 @@ def main():
     s.add_argument("--k", default="3,5,7")
     s.add_argument("--max_search_rows", type=int, default=8192,
                    help="rows used to score candidate subsets (0 = all)")
+    s.add_argument("--objective", default="abs",
+                   choices=["abs", "sigma", "sigma2", "delta_sigma2"],
+                   help="'abs' = original absolute RMSE; others = scmp_llm currencies")
     s.add_argument("--out", required=True)
     s.set_defaults(func=search, compare=None)
 
