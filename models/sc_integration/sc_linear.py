@@ -159,7 +159,10 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
     # ones; that misordering costs more than mixing gains (a wrong split is
     # WORSE than uniform, see the shuffled-bucket control in the error-grid
     # analysis). Rank on the smoothed activation instead.
-    if smooth is not None:
+    # Historical E3 n=100 replication ranked the pre-SmoothQuant activations.
+    # Keep that behavior available for exact result reproduction while leaving
+    # the corrected deployment ranking as the default.
+    if smooth is not None and os.environ.get("SC_MP_LEGACY_RAW_AMAX") != "1":
         row_metric = (x_flat / smooth.to(x_flat.dtype)).abs().amax(dim=-1)
     else:
         row_metric = x_flat.abs().amax(dim=-1)
