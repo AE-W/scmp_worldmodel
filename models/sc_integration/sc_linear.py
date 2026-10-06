@@ -86,7 +86,7 @@ if os.environ.get("SC_STEP_SCHEDULE"):
     _STEP_SCHEDULE = [int(x) for x in _json2.loads(os.environ["SC_STEP_SCHEDULE"])]
 # Optional per-(row, input-chunk) MP dispatch supported by recent kernels.
 # Zero keeps the historical per-row path byte-for-byte unchanged.
-_MP_GROUP_CHUNK_D = int(os.environ.get("SC_MP_GROUP_CHUNK_D", "0"))
+_MP_GROUP_CHUNK_D = int(os.environ.get("SC_MP_GROUP_CHUNK_D") or "0")
 
 
 def _resolve_sc_prec(stoc_len: int, default_prec: int) -> int:
