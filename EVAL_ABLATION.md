@@ -1,4 +1,4 @@
-# Per-group n=10 pilot
+# Evaluation ablation
 
 ## Hypothesis
 
@@ -23,11 +23,11 @@ through `SC_MP_GROUP_CHUNK_D`; existing reproduction paths remain unchanged.
 ## Run
 
 ```bash
-bash RUN_PER_GROUP_N10.sh row-uniform
-bash RUN_PER_GROUP_N10.sh row-mixed
-bash RUN_PER_GROUP_N10.sh group-uniform
-bash RUN_PER_GROUP_N10.sh group-mixed
-bash RUN_PER_GROUP_N10.sh compare
+bash RUN_EVAL_ABLATION.sh row-uniform
+bash RUN_EVAL_ABLATION.sh row-mixed
+bash RUN_EVAL_ABLATION.sh group-uniform
+bash RUN_EVAL_ABLATION.sh group-mixed
+bash RUN_EVAL_ABLATION.sh compare
 ```
 
 `BRIDGE_ROOT`, `EVAL_OUT_ROOT`, and `CUDA_VISIBLE_DEVICES` can be supplied by

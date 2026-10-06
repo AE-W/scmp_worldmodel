@@ -42,10 +42,10 @@ import glob, json, os
 
 root = os.environ["EVAL_OUT_ROOT"]
 tags = {
-    "row_uniform": "n10_row_uniform96",
-    "row_mixed": "n10_row_mixed5",
-    "group_uniform": "n10_group_uniform96",
-    "group_mixed": "n10_group_mixed5",
+    "row_uniform": "eval_a",
+    "row_mixed": "eval_b",
+    "group_uniform": "eval_c",
+    "group_mixed": "eval_d",
 }
 rows = {}
 for label, tag in tags.items():
@@ -83,24 +83,24 @@ PY
 
 case "${1:-help}" in
   row-uniform)
-    run_eval row-uniform n10_row_uniform96 \
+    run_eval row-uniform eval_a \
       SC_MP_CONFIG= SC_MP_PER_MODULE= SC_MP_GROUP_CHUNK_D= \
       SC_UNIFORM_STOC_LEN=96
     ;;
   row-mixed)
     set_mp_config
-    run_eval row-mixed n10_row_mixed5 \
+    run_eval row-mixed eval_b \
       SC_MP_PER_MODULE="$CAL" SC_MP_GROUP_CHUNK_D= \
       SC_MP_LEGACY_RAW_AMAX=1
     ;;
   group-uniform)
     export SC_MP_CONFIG='{"stoc_len_levels":[96],"level_fractions":[1.0]}'
-    run_eval group-uniform n10_group_uniform96 \
+    run_eval group-uniform eval_c \
       SC_MP_PER_MODULE= SC_MP_GROUP_CHUNK_D=128
     ;;
   group-mixed)
     set_mp_config
-    run_eval group-mixed n10_group_mixed5 \
+    run_eval group-mixed eval_d \
       SC_MP_PER_MODULE="$CAL" SC_MP_GROUP_CHUNK_D=128
     ;;
   all)
