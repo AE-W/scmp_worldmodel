@@ -84,6 +84,9 @@ _STEP_SCHEDULE = None
 if os.environ.get("SC_STEP_SCHEDULE"):
     import json as _json2
     _STEP_SCHEDULE = [int(x) for x in _json2.loads(os.environ["SC_STEP_SCHEDULE"])]
+# Optional per-(row, input-chunk) MP dispatch supported by recent kernels.
+# Zero keeps the historical per-row path byte-for-byte unchanged.
+_MP_GROUP_CHUNK_D = int(os.environ.get("SC_MP_GROUP_CHUNK_D", "0"))
 
 
 def _resolve_sc_prec(stoc_len: int, default_prec: int) -> int:
@@ -149,6 +152,51 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
         smooth = (smooth.index_select(0, rest_idx).contiguous()
                   if smooth is not None else None)
         in_dim = int(rest_idx.numel())
+
+    if _MP_GROUP_CHUNK_D > 0:
+        if _GRANULARITY != "per_row":
+            raise ValueError("SC_MP_GROUP_CHUNK_D requires per_row granularity")
+        if thresholds is not None:
+            raise ValueError(
+                "Per-row calibrated thresholds cannot be reused for per-group "
+                "dispatch; use a fraction-calibrated MP config.")
+        chunk_d = _MP_GROUP_CHUNK_D
+        if in_dim % chunk_d:
+            raise ValueError(
+                f"Per-group pilot requires input width ({in_dim}) to be "
+                f"divisible by SC_MP_GROUP_CHUNK_D ({chunk_d}) so every "
+                "group has equal weight in the cycle budget.")
+        n_chunks = in_dim // chunk_d
+        metric_x = x_flat.abs()
+        group_metric = metric_x.view(
+            x_flat.shape[0], n_chunks, chunk_d).amax(dim=-1)
+        if os.environ.get("SC_MP_INVERT") == "1" or mod_invert:
+            group_metric = -group_metric
+        group_assignment = classify_rows_by_metric(
+            group_metric.reshape(-1), _MP_CONFIG.stoc_len_levels, fractions)
+        rung_table = group_assignment.row_levels.reshape(
+            x_flat.shape[0], n_chunks).to(torch.int32)
+        levels = list(_MP_CONFIG.stoc_len_levels)
+        max_sl = max(levels)
+        sp = _resolve_sc_prec(max_sl, sc_prec)
+        out = sc_matmul(
+            x_flat, w,
+            granularity="per_row",
+            mode="bipolar",
+            sc_prec=sp,
+            stoc_len=max_sl,
+            chunk_d=chunk_d,
+            config=_get_config(in_dim, sp),
+            halve_bipolar_stoc_len=_HALVE,
+            smooth_scales=smooth,
+            rung_table=rung_table,
+            level_lens=levels,
+        )
+        if out_prot is not None:
+            out = out + out_prot
+        if linear.bias is not None:
+            out = out + linear.bias.float()
+        return out.reshape(*orig_shape[:-1], -1).to(out_dtype)
 
     # Rank rows by the magnitude the kernel actually quantises. With
     # SmoothQuant attached, sc_matmul divides x by the per-channel scales

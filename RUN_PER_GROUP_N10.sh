@@ -1,0 +1,99 @@
+#!/bin/bash
+# Paired n=10 test of per-(row, input-chunk) MP at the 7.58-bit / 96-cycle
+# budget. All paths and device choices are supplied through environment vars.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+export PYTHONPATH=.
+export BRIDGE_ROOT=${BRIDGE_ROOT:-$PWD/robotdata/opensource_robotdata/bridge}
+export EVAL_OUT_ROOT=${EVAL_OUT_ROOT:-$PWD/results/local_n_eval}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+
+CAL=$PWD/results/mp_fractions_sc_avg192_n5.json
+KEYS=$PWD/results/diverse_10.json
+SCALES=$PWD/results/smoothquant_scales.pt
+SKIP=$(python -c "import json;print(json.load(open('results/final_sc_recipe.json'))['skip'])")
+COMMON=(
+  SC_LINEAR_GRANULARITY=per_row
+  SC_HALVE=1
+  SC_MP_FIXED_PREC=1
+  SC_PREC=8
+  SC_SMOOTH_SCALES="$SCALES"
+)
+
+run_eval() {
+  local mode=$1 tag=$2
+  shift 2
+  env "${COMMON[@]}" "$@" \
+    python evaluate/eval_local_n_samples.py \
+      --config configs/evaluation/bridge/frame_ada_sc_full.yaml --skip "$SKIP" \
+      --tag "$tag" --keys_file "$KEYS" --num_samples 10 \
+      --shard 0 --num_shards 1 --inference_steps 50 --scheduler PNDM
+}
+
+set_mp_config() {
+  export SC_MP_CONFIG
+  SC_MP_CONFIG=$(python -c "import json;d=json.load(open('$CAL'));print(json.dumps({'stoc_len_levels':d['stoc_len_levels'],'level_fractions':d['level_fractions']},separators=(',',':')))")
+}
+
+compare_results() {
+  python - <<'PY'
+import glob, json, os
+
+root = os.environ["EVAL_OUT_ROOT"]
+tags = {
+    "uniform": "pg10_uni96",
+    "per_row": "pg10_row_n5",
+    "per_group": "pg10_group_n5",
+}
+rows = {}
+for label, tag in tags.items():
+    by_key = {}
+    for path in glob.glob(os.path.join(root, tag, "metrics", "*.json")):
+        with open(path) as handle:
+            item = json.load(handle)
+        key = item.get("key") or os.path.splitext(os.path.basename(path))[0]
+        by_key[key] = item
+    rows[label] = by_key
+
+common = sorted(set.intersection(*(set(v) for v in rows.values())))
+if not common:
+    raise SystemExit("No three-way paired metrics found; run all arms first.")
+for label in ("per_row", "per_group"):
+    print(f"{label}: paired={len(common)}")
+    for metric, higher, unit in (
+        ("psnr", True, " dB"),
+        ("ssim", True, ""),
+        ("latent_l2", False, ""),
+    ):
+        delta = [rows[label][k][metric] - rows["uniform"][k][metric]
+                 for k in common]
+        wins = sum((x > 0) if higher else (x < 0) for x in delta)
+        print(f"  {metric}: wins={wins}/{len(common)} "
+              f"mean_delta={sum(delta) / len(delta):+.6f}{unit}")
+PY
+}
+
+case "${1:-help}" in
+  uniform)
+    run_eval uniform pg10_uni96 SC_UNIFORM_STOC_LEN=96
+    ;;
+  row)
+    set_mp_config
+    run_eval row pg10_row_n5 \
+      SC_MP_PER_MODULE="$CAL" SC_MP_LEGACY_RAW_AMAX=1
+    ;;
+  group)
+    set_mp_config
+    run_eval group pg10_group_n5 \
+      SC_MP_PER_MODULE="$CAL" SC_MP_GROUP_CHUNK_D=128
+    ;;
+  all)
+    "$0" uniform
+    "$0" row
+    "$0" group
+    "$0" compare
+    ;;
+  compare) compare_results;;
+  *) echo "usage: $0 {uniform|row|group|all|compare}";;
+esac
