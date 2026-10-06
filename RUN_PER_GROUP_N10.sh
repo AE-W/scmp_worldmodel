@@ -42,9 +42,10 @@ import glob, json, os
 
 root = os.environ["EVAL_OUT_ROOT"]
 tags = {
-    "uniform": "pg10_uni96",
-    "per_row": "pg10_row_n5",
-    "per_group": "pg10_group_n5",
+    "row_uniform": "n10_row_uniform96",
+    "row_mixed": "n10_row_mixed5",
+    "group_uniform": "n10_group_uniform96",
+    "group_mixed": "n10_group_mixed5",
 }
 rows = {}
 for label, tag in tags.items():
@@ -58,15 +59,21 @@ for label, tag in tags.items():
 
 common = sorted(set.intersection(*(set(v) for v in rows.values())))
 if not common:
-    raise SystemExit("No three-way paired metrics found; run all arms first.")
-for label in ("per_row", "per_group"):
-    print(f"{label}: paired={len(common)}")
+    raise SystemExit("No four-way paired metrics found; run all arms first.")
+pairs = (
+    ("row_mixed", "row_uniform"),
+    ("group_uniform", "row_uniform"),
+    ("group_mixed", "group_uniform"),
+    ("group_mixed", "row_mixed"),
+)
+for label, baseline in pairs:
+    print(f"{label} vs {baseline}: paired={len(common)}")
     for metric, higher, unit in (
         ("psnr", True, " dB"),
         ("ssim", True, ""),
         ("latent_l2", False, ""),
     ):
-        delta = [rows[label][k][metric] - rows["uniform"][k][metric]
+        delta = [rows[label][k][metric] - rows[baseline][k][metric]
                  for k in common]
         wins = sum((x > 0) if higher else (x < 0) for x in delta)
         print(f"  {metric}: wins={wins}/{len(common)} "
@@ -75,25 +82,34 @@ PY
 }
 
 case "${1:-help}" in
-  uniform)
-    run_eval uniform pg10_uni96 SC_UNIFORM_STOC_LEN=96
+  row-uniform)
+    run_eval row-uniform n10_row_uniform96 \
+      SC_MP_CONFIG= SC_MP_PER_MODULE= SC_MP_GROUP_CHUNK_D= \
+      SC_UNIFORM_STOC_LEN=96
     ;;
-  row)
+  row-mixed)
     set_mp_config
-    run_eval row pg10_row_n5 \
-      SC_MP_PER_MODULE="$CAL" SC_MP_LEGACY_RAW_AMAX=1
+    run_eval row-mixed n10_row_mixed5 \
+      SC_MP_PER_MODULE="$CAL" SC_MP_GROUP_CHUNK_D= \
+      SC_MP_LEGACY_RAW_AMAX=1
     ;;
-  group)
+  group-uniform)
+    export SC_MP_CONFIG='{"stoc_len_levels":[96],"level_fractions":[1.0]}'
+    run_eval group-uniform n10_group_uniform96 \
+      SC_MP_PER_MODULE= SC_MP_GROUP_CHUNK_D=128
+    ;;
+  group-mixed)
     set_mp_config
-    run_eval group pg10_group_n5 \
+    run_eval group-mixed n10_group_mixed5 \
       SC_MP_PER_MODULE="$CAL" SC_MP_GROUP_CHUNK_D=128
     ;;
   all)
-    "$0" uniform
-    "$0" row
-    "$0" group
+    "$0" row-uniform
+    "$0" row-mixed
+    "$0" group-uniform
+    "$0" group-mixed
     "$0" compare
     ;;
   compare) compare_results;;
-  *) echo "usage: $0 {uniform|row|group|all|compare}";;
+  *) echo "usage: $0 {row-uniform|row-mixed|group-uniform|group-mixed|all|compare}";;
 esac
