@@ -15,6 +15,7 @@ mkdir -p "$OUT"
 SKIP=$(python -c "import json; print(json.load(open('results/final_sc_recipe.json'))['skip'])")
 CAL=$OUT/selected.json
 python -m unittest evaluate.test_group_mp_policy
+python evaluate/smoke_group_search.py
 python evaluate/calibrate_group_mp.py \
   --calibration_keys results/eval_calibration_keys.json \
   --holdout_keys results/eval_holdout_keys.json --test_keys results/diverse_10.json \
