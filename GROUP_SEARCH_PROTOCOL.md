@@ -17,6 +17,8 @@ chunked matmul, including SQ and cross-chunk error cancellation. Group ranking
 remains raw absmax, exactly as at runtime; oracle error assignments are not
 converted into fractions. Capture eight rows at steps 0,25,49 of each FP
 teacher trajectory. This is a small screening calibration, not full coverage.
+Store sampled groups' rank positions in the original complete forward call;
+do not rerank a pool of rows from different timesteps as one call.
 
 Minimize each module's calibration relative output MSE subject to realized
 average length <=96, checking rounding for sampled and original row counts.

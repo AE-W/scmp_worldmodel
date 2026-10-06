@@ -2,7 +2,7 @@
 import torch
 from scmp_kernels import sc_matmul
 from scmp_kernels.mp import MPConfig
-from evaluate.calibrate_group_mp import rung
+from evaluate.calibrate_group_mp import rung, sampled_rung
 from evaluate.group_mp_policy import mean_cycles, policies
 from models.sc_integration import sc_linear as impl
 
@@ -23,6 +23,14 @@ def main():
         for policy in samples:
             impl._MP_PER_MODULE = {("qkv", 0): {"fractions": policy["level_fractions"], "invert": policy["invert"]}}
             table = rung(metric, levels, policy)
+            rank_pair = []
+            for direction in (metric, -metric):
+                order = direction.flatten().argsort(descending=True)
+                rank = torch.empty_like(order)
+                rank[order] = torch.arange(order.numel(), device="cuda")
+                rank_pair.append(rank.reshape(metric.shape)[[1, 5]].cpu())
+            subtable = sampled_rung([(x[[1, 5]].cpu(), rank_pair, metric.numel())], policy, x.device)
+            assert torch.equal(subtable, table[[1, 5]])
             expected = sc_matmul(x, linear.weight.float(), granularity="per_row", mode="bipolar",
                                  sc_prec=8, stoc_len=128, chunk_d=128,
                                  halve_bipolar_stoc_len=True, smooth_scales=linear._sc_smooth_scales,

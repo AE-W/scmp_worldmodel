@@ -19,7 +19,7 @@ import torch
 from diffusers.models import AutoencoderKL
 from scmp_kernels import sc_matmul
 from scmp_kernels.mp import classify_rows_by_metric
-from evaluate.group_mp_policy import mean_cycles, policies
+from evaluate.group_mp_policy import group_counts, mean_cycles, policies
 
 from models.sc_integration import get_config, reconfigure
 from models.sc_integration.sc_controller import get_current_step
@@ -38,6 +38,17 @@ def rung(metric, levels, policy):
     return classify_rows_by_metric(
         metric.flatten(), levels, policy["level_fractions"]
     ).row_levels.reshape(metric.shape).to(torch.int32)
+
+
+def sampled_rung(captures, policy, device):
+    """Retain ranks from each full original call, not from pooled samples."""
+    tables = []
+    for _x, ranks, n_groups in captures:
+        counts = group_counts(n_groups, policy["level_fractions"])
+        boundaries = torch.tensor(np.cumsum(counts)[:-1], device=device)
+        rank = ranks[int(policy["invert"])].to(device)
+        tables.append(torch.bucketize(rank.contiguous(), boundaries, right=True).to(torch.int32))
+    return torch.cat(tables)
 
 
 def digest(path):
@@ -107,7 +118,14 @@ def main():
             x = inp[0].detach().reshape(-1, inp[0].shape[-1]).float()
             full_shapes[name].add(int(x.shape[0]))
             indices = torch.randperm(x.shape[0], device=device, generator=sampler)[:cli.rows]
-            captures[phase][name].append(x[indices].cpu())
+            metric = x.abs().view(x.shape[0], -1, 128).amax(-1)
+            ranks = []
+            for direction in (metric, -metric):
+                order = direction.flatten().argsort(descending=True)
+                position = torch.empty_like(order)
+                position[order] = torch.arange(order.numel(), device=device)
+                ranks.append(position.view(metric.shape)[indices].cpu())
+            captures[phase][name].append((x[indices].cpu(), ranks, metric.numel()))
         hooks.append(mod.register_forward_hook(hook))
     pipe = make_pipe(args, vae, model, "PNDM")
     for phase in range(2):
@@ -141,8 +159,7 @@ def main():
     out = Path(cli.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     for name, mod in active.items():
-        xs = [torch.cat(c[name]).to(device) for c in captures]
-        metrics = [x.abs().view(x.shape[0], -1, 128).amax(-1) for x in xs]
+        xs = [torch.cat([item[0] for item in c[name]]).to(device) for c in captures]
         weight = mod.weight.detach().float()
         refs = [x @ weight.T for x in xs]
         # Evaluate the full matmul: preserve correlations and cancellation
@@ -150,15 +167,15 @@ def main():
         errors, costs = [], []
         for candidate in candidates:
             phase_errors = []
-            for x, metric, ref in zip(xs, metrics, refs):
+            for phase_index, (x, ref) in enumerate(zip(xs, refs)):
                 with torch.no_grad():
                     y = sc_matmul(x, weight, granularity="per_row", mode="bipolar",
                                   sc_prec=8, stoc_len=max(levels), chunk_d=128,
                                   halve_bipolar_stoc_len=True, smooth_scales=scales[name].float(),
-                                  rung_table=rung(metric, levels, candidate), level_lens=levels)
+                                  rung_table=sampled_rung(captures[phase_index][name], candidate, device), level_lens=levels)
                 phase_errors.append(float((y - ref).square().mean() / ref.square().mean().clamp_min(1e-12)))
             # Check realized rounded dispatch, both sampled and deployment sizes.
-            sizes = full_shapes[name] | {int(x.shape[0]) for x in xs}
+            sizes = full_shapes[name]
             cost = max(mean_cycles(n * (mod.in_features // 128), levels,
                                    candidate["level_fractions"]) for n in sizes)
             errors.append(phase_errors)

@@ -17,15 +17,20 @@ def policies(levels):
     return out
 
 
-def mean_cycles(n_groups, levels, fractions):
+def group_counts(n_groups, fractions):
     if n_groups <= 0:
         raise ValueError("No groups to dispatch")
-    offset = total = 0
-    for i, (length, fraction) in enumerate(zip(levels, fractions)):
-        count = round(fraction * n_groups) if i < len(levels) - 1 else n_groups - offset
+    offset = 0
+    counts = []
+    for i, fraction in enumerate(fractions):
+        count = round(fraction * n_groups) if i < len(fractions) - 1 else n_groups - offset
         count = max(0, min(count, n_groups - offset))
-        total += length * count
+        counts.append(count)
         offset += count
     if offset != n_groups:
         raise ValueError("Incomplete group accounting")
-    return total / n_groups
+    return counts
+
+
+def mean_cycles(n_groups, levels, fractions):
+    return sum(length * count for length, count in zip(levels, group_counts(n_groups, fractions))) / n_groups
