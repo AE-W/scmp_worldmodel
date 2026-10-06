@@ -10,7 +10,9 @@ export EVAL_OUT_ROOT=${EVAL_OUT_ROOT:-$PWD/results/local_n_eval}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
 CAL=$PWD/results/mp_fractions_sc_avg192_n5.json
-KEYS=$PWD/results/diverse_10.json
+KEYS=${KEYS_FILE:-$PWD/results/diverse_10.json}
+NUM_SAMPLES=${NUM_SAMPLES:-10}
+TAG_SUFFIX=${TAG_SUFFIX:-}
 SCALES=$PWD/results/smoothquant_scales.pt
 SKIP=$(python -c "import json;print(json.load(open('results/final_sc_recipe.json'))['skip'])")
 COMMON=(
@@ -24,10 +26,11 @@ COMMON=(
 run_eval() {
   local mode=$1 tag=$2
   shift 2
+  tag="${tag}${TAG_SUFFIX}"
   env "${COMMON[@]}" "$@" \
     python evaluate/eval_local_n_samples.py \
       --config configs/evaluation/bridge/frame_ada_sc_full.yaml --skip "$SKIP" \
-      --tag "$tag" --keys_file "$KEYS" --num_samples 10 \
+      --tag "$tag" --keys_file "$KEYS" --num_samples "$NUM_SAMPLES" \
       --shard 0 --num_shards 1 --inference_steps 50 --scheduler PNDM
 }
 
