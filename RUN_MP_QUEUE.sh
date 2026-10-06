@@ -45,6 +45,15 @@ run_stepWt() {
     --shard 0 --num_shards 1 --inference_steps 50 --scheduler PNDM
   unset SC_STEP_SCHEDULE
 }
+# ---- Table VI timestep schedules recovered from the private HF backup ----
+run_step_budget() { # $1=tag(sw758/sw658/sw632/sw600) $2=schedule file
+  export SC_STEP_SCHEDULE=$(cat "results/$2")
+  env $COMMON python evaluate/eval_local_n_samples.py \
+    --config configs/evaluation/bridge/frame_ada_sc_full.yaml --skip "$SKIP" \
+    --tag "scr10_$1" --keys_file results/diverse_10.json --num_samples 10 \
+    --shard 0 --num_shards 1 --inference_steps 50 --scheduler PNDM
+  unset SC_STEP_SCHEDULE
+}
 # ---- 备选2: 完整机制(阈值+保护通道) 先校准再评测 ----
 run_fullmp() {
   python evaluate/calibrate_full_mp.py --phase both   # 产 mp_fractions_sc_avg192_full.json
@@ -65,7 +74,12 @@ run_mp_generic() { # $1=配置名 $2=tag
 case "${1:-help}" in
   g758) run_mp g758;;  g658) run_mp g658;;  g632) run_mp g632;;  g600) run_mp g600;;
   u758) run_uni u758 96;; u658) run_uni u658 48;; u632) run_uni u632 40;; u600) run_uni u600 32;;
-  stepWt) run_stepWt;;  fullmp) run_fullmp;;
+  stepWt) run_stepWt;;
+  sw758) run_step_budget sw758 step_sched_B96.json;;
+  sw658) run_step_budget sw658 step_sched_B48.json;;
+  sw632) run_step_budget sw632 step_sched_B40.json;;
+  sw600) run_step_budget sw600 step_sched_B32.json;;
+  fullmp) run_fullmp;;
   upload)   # 把所有 scr10_* 结果 json 回传 HF (BDXXN/scmp-worldmodel-progress)
     export SCMP_HF_TOKEN_FILE=${SCMP_HF_TOKEN_FILE:-$HOME/hf_token.txt}
     export SCMP_ROOT=$PWD SCMP_RESULTS=$PWD/results
@@ -75,5 +89,5 @@ case "${1:-help}" in
     run_uni u758 96; run_uni u658 48; run_uni u632 40; run_uni u600 32
     run_stepWt; run_fullmp
     $0 upload ;;
-  *) echo "用法: $0 {g758|g658|g632|g600|u758|u658|u632|u600|stepWt|fullmp|upload|all}";;
+  *) echo "用法: $0 {g758|g658|g632|g600|u758|u658|u632|u600|stepWt|sw758|sw658|sw632|sw600|fullmp|upload|all}";;
 esac
