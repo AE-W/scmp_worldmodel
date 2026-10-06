@@ -8,6 +8,7 @@ export PYTHONPATH=.
 export BRIDGE_ROOT=${BRIDGE_ROOT:-$PWD/robotdata/opensource_robotdata/bridge}
 export EVAL_OUT_ROOT=${EVAL_OUT_ROOT:-$PWD/results/local_n_eval}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+export EVAL_PAIR_SEED=${EVAL_PAIR_SEED:-3407}
 
 CAL=$PWD/results/mp_fractions_sc_avg192_n5.json
 KEYS=${KEYS_FILE:-$PWD/results/diverse_10.json}

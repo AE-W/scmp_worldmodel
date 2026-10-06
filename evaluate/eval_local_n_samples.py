@@ -113,6 +113,8 @@ def make_pipe(args, vae, model, scheduler_kind: str):
 
 
 def gen_one(pipe, mask_x, actions, args, device):
+    seed = os.environ.get("EVAL_PAIR_SEED")
+    generator = torch.Generator(device=device).manual_seed(int(seed)) if seed is not None else None
     with torch.no_grad():
         videos, latents = pipe(
             actions.to(device).to(torch.float32),
@@ -121,7 +123,7 @@ def gen_one(pipe, mask_x, actions, args, device):
             height=args.video_size[0], width=args.video_size[1],
             num_inference_steps=args.infer_num_sampling_steps,
             guidance_scale=args.guidance_scale,
-            device=device, return_dict=False, output_type="both",
+            device=device, return_dict=False, output_type="both", generator=generator,
         )
     return videos, latents
 
@@ -281,6 +283,8 @@ def main():
                 "ssim": round(float(ps["SSIM"]), 3),
                 "infer_seconds": round(dt, 2),
             }
+            if os.environ.get("EVAL_PAIR_SEED") is not None:
+                metric["generation_seed"] = int(os.environ["EVAL_PAIR_SEED"])
             with open(os.path.join(met_dir, f"{key}.json"), "w") as f:
                 json.dump(metric, f)
             metrics.append(metric)

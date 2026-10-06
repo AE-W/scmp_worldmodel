@@ -14,6 +14,7 @@ within-row sensitivity variation.
 - Same SC precision, halving, SmoothQuant scales, and skip recipe
 - Same five-level ladder and calibrated fractions
 - Same mean stream-length budget
+- Same generation seed for every arm (`EVAL_PAIR_SEED=3407` by default)
 
 The four arms are historical per-row uniform-96, historical per-row MP,
 per-group uniform-96, and per-group MP. This separates the effect of chunked
