@@ -405,6 +405,11 @@ class Trajectory2VideoGenPipeline(DiffusionPipeline):
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                try:
+                    from models.sc_integration.sc_controller import set_current_step
+                    set_current_step(i, len(timesteps))
+                except Exception:
+                    pass
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 # latent_model_input = latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)

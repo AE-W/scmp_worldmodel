@@ -3,9 +3,13 @@
 *.git
 *.vscode
 *.log
+# Editable install metadata for the kernels/ submodule (scmp_kernels package)
+*.egg-info/
+kernels/build/
 pretrained_models/stabilityai
 results
 wandb
 # Large eval-output dirs (kept local only)
 results_full_short
 results_simpler_demo
+robotdata

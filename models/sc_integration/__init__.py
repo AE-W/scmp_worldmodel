@@ -1,21 +1,22 @@
-"""SC (Stochastic Computing) int8 QK replacement for IRASim.
+"""SC (Stochastic Computing) int8 replacement ops for IRASim.
 
-Pulls SC kernels from /home/dingqy/Bench/scmp_llm/SC/ without copying code.
+The actual SC Triton kernels live in the ``scmp_kernels`` package, vendored as
+a git submodule at ``kernels/`` (repo root) and installed editable with
+``pip install -e ./kernels``. This package only holds the IRASim-specific glue
+(attention / linear / MLP drop-ins + the global SC controller); the kernels
+themselves are shared with the other SC applications, so kernel updates
+propagate here automatically by bumping the submodule.
+
+If imports below fail with ``ModuleNotFoundError: scmp_kernels``, the submodule
+is not installed — run::
+
+    git submodule update --init --recursive
+    pip install -e ./kernels
 """
-import os
-import sys
-
-_SC_KERNEL_ROOT = os.environ.get(
-    "IRASIM_SC_KERNEL_ROOT",
-    "/home/dingqy/Bench/scmp_llm/SC",
-)
-if _SC_KERNEL_ROOT not in sys.path:
-    sys.path.insert(0, _SC_KERNEL_ROOT)
-
-from .sc_attention import sc_qk_matmul, sc_av_matmul  # noqa: E402
-from .sc_linear import sc_linear_forward  # noqa: E402
-from .sc_mlp import SCMlp  # noqa: E402
-from .sc_controller import (  # noqa: E402
+from .sc_attention import sc_qk_matmul, sc_av_matmul
+from .sc_linear import sc_linear_forward
+from .sc_mlp import SCMlp
+from .sc_controller import (
     configure,
     reconfigure,
     get_config,

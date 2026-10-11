@@ -96,3 +96,21 @@ def clear_skip_blocks(op: str = None) -> None:
         _cfg.skip_blocks.clear()
     elif op in _cfg.skip_blocks:
         del _cfg.skip_blocks[op]
+
+
+# ---- diffusion step tracking (for per-timestep stream-length schedules) ----
+# Row-level MP failed because no runtime-observable signal ranks rows
+# (Spearman vs true sensitivity = 0.02). A per-TIMESTEP schedule needs no
+# such signal: the step index is exact, and diffusion steps are known to
+# differ in sensitivity. The sampling pipeline publishes the step here.
+_CURRENT_STEP = 0
+_TOTAL_STEPS = 1
+
+
+def set_current_step(i: int, total: int) -> None:
+    global _CURRENT_STEP, _TOTAL_STEPS
+    _CURRENT_STEP, _TOTAL_STEPS = int(i), max(int(total), 1)
+
+
+def get_current_step() -> tuple:
+    return _CURRENT_STEP, _TOTAL_STEPS

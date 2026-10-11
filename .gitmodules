@@ -1,0 +1,4 @@
+[submodule "kernels"]
+	path = kernels
+	url = https://github.com/CrucibleComputingGroup/scmp_kernels.git
+	branch = main

@@ -28,8 +28,17 @@ import time
 import traceback
 from pathlib import Path
 
+if os.environ.get('SC_SEARCH_RECIPE'):
+    from evaluate.search_recipe import SearchRecipe,configure_float_precision
+    _recipe = SearchRecipe(**json.loads(os.environ['SC_SEARCH_RECIPE']))
+    # Preserve the explicit policy and trace while pinning numerical settings.
+    from evaluate.search_recipe import runtime_settings
+    os.environ.update(runtime_settings(_recipe))
+
 import numpy as np
 import torch
+if os.environ.get('SC_SEARCH_RECIPE'):
+    configure_float_precision(torch)
 import torch.nn.functional as F
 import imageio
 from einops import rearrange
@@ -45,7 +54,8 @@ from evaluate.compute_psnr_ssim import process_video_psnr_ssim
 from util import update_paths
 
 
-BRIDGE_ROOT = "/home/dingqy/Bench/IRASim/robotdata/opensource_robotdata/bridge"
+BRIDGE_ROOT = os.environ.get(
+    "BRIDGE_ROOT", "/home/dingqy/Bench/IRASim/robotdata/opensource_robotdata/bridge")
 GT_LATENT_DIR = f"{BRIDGE_ROOT}/evaluation_latent_videos/test_sample_latent_videos"
 GT_VIDEO_DIR = f"{BRIDGE_ROOT}/evaluation_videos/test_sample_videos"
 ANNOT_DIR = f"{BRIDGE_ROOT}/annotation/test"
@@ -112,6 +122,8 @@ def make_pipe(args, vae, model, scheduler_kind: str):
 
 
 def gen_one(pipe, mask_x, actions, args, device):
+    seed = os.environ.get("EVAL_PAIR_SEED")
+    generator = torch.Generator(device=device).manual_seed(int(seed)) if seed is not None else None
     with torch.no_grad():
         videos, latents = pipe(
             actions.to(device).to(torch.float32),
@@ -120,7 +132,7 @@ def gen_one(pipe, mask_x, actions, args, device):
             height=args.video_size[0], width=args.video_size[1],
             num_inference_steps=args.infer_num_sampling_steps,
             guidance_scale=args.guidance_scale,
-            device=device, return_dict=False, output_type="both",
+            device=device, return_dict=False, output_type="both", generator=generator,
         )
     return videos, latents
 
@@ -174,16 +186,44 @@ def main():
     p.add_argument("--scheduler", choices=["PNDM", "DPM"], default="PNDM")
     p.add_argument("--shard", type=int, default=0)
     p.add_argument("--num_shards", type=int, default=1)
-    p.add_argument("--out_root", default="/home/dingqy/Bench/IRASim/results/local_n_eval")
+    p.add_argument("--keys_file", default=None,
+                   help="JSON list of sample keys to evaluate (e.g. diverse_300.json); "
+                        "overrides the default sorted-first-N selection")
+    p.add_argument("--out_root", default=os.environ.get(
+        "EVAL_OUT_ROOT", "/home/dingqy/Bench/IRASim/results/local_n_eval"))
+    p.add_argument("--naive_int8", action="store_true",
+                   help="replace SC kernels with naive per-tensor int8 fake-quant "
+                        "(uniform quantization baseline); ops still selected by attention_mode")
+    p.add_argument("--naive_bits", type=int, default=8,
+                   help="bit width for --naive_int8 (WxAx, x=bits); 8 reproduces the original baseline")
+    p.add_argument("--naive_asymm", action="store_true",
+                   help="use asymmetric (zero-point) quantization instead of symmetric for --naive_int8")
     cli = p.parse_args()
 
     args = build_args(cli.config, cli.inference_steps)
     skip_map = parse_skip(cli.skip)
 
+    if cli.naive_int8:
+        from evaluate.eval_with_naive_int8 import install_naive_int8_patches
+        install_naive_int8_patches(bits=cli.naive_bits, asymm=cli.naive_asymm)
+        b = cli.naive_bits
+        print(f"naive W{b}A{b}_{'asymm' if cli.naive_asymm else 'symm'} patches "
+              f"installed over sc_* kernels", flush=True)
+
     device = torch.device("cuda:0")
     vae = AutoencoderKL.from_pretrained(args.vae_model_path, subfolder="vae").to(device).eval()
     vae.requires_grad_(False)
     model = load_model(args, device)
+    sq_path = os.environ.get("SC_SMOOTH_SCALES")
+    if sq_path:  # SmoothQuant: attach calibrated per-channel scales to linears
+        payload = torch.load(sq_path, map_location=device, weights_only=False)
+        named = dict(model.named_modules())
+        n_att = 0
+        for name, s in payload["scales"].items():
+            if name in named:
+                named[name]._sc_smooth_scales = s.to(device).float()
+                n_att += 1
+        print(f"smoothquant: attached {n_att} scale vectors (alpha={payload['alpha']})", flush=True)
     reconfigure(args.attention_mode)
     clear_skip_blocks()
     for op, blocks in skip_map.items():
@@ -193,7 +233,11 @@ def main():
           f"steps={args.infer_num_sampling_steps} sched={cli.scheduler}", flush=True)
 
     # Decide which samples to handle this shard.
-    all_files = sorted(f for f in os.listdir(GT_LATENT_DIR) if f.endswith(".pt"))[: cli.num_samples]
+    if getattr(cli, "keys_file", None):   # explicit diverse-sample list
+        keys = json.load(open(cli.keys_file))[: cli.num_samples]
+        all_files = [f"{k}.pt" for k in keys]
+    else:
+        all_files = sorted(f for f in os.listdir(GT_LATENT_DIR) if f.endswith(".pt"))[: cli.num_samples]
     shard_files = all_files[cli.shard::cli.num_shards]
     print(f"[shard {cli.shard}] {len(shard_files)}/{len(all_files)} samples", flush=True)
 
@@ -209,6 +253,11 @@ def main():
     for fn in shard_files:
         eid, cam, start = parse_key(fn)
         key = f"{eid}_{cam}_{start}"
+        done_path = os.path.join(met_dir, f"{key}.json")
+        if os.path.exists(done_path):  # resume: already computed in a prior run
+            with open(done_path) as f:
+                metrics.append(json.load(f))
+            continue
         ann_path = os.path.join(ANNOT_DIR, f"{eid}.json")
         if not os.path.exists(ann_path):
             print(f"  [{key}] skip — no annotation", flush=True)
@@ -243,6 +292,8 @@ def main():
                 "ssim": round(float(ps["SSIM"]), 3),
                 "infer_seconds": round(dt, 2),
             }
+            if os.environ.get("EVAL_PAIR_SEED") is not None:
+                metric["generation_seed"] = int(os.environ["EVAL_PAIR_SEED"])
             with open(os.path.join(met_dir, f"{key}.json"), "w") as f:
                 json.dump(metric, f)
             metrics.append(metric)

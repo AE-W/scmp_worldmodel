@@ -1,0 +1,1255 @@
+{
+  "config_name": "sc_avg192_n5",
+  "sc_prec": 8,
+  "stoc_len_levels": [
+    128,
+    112,
+    96,
+    80,
+    64
+  ],
+  "level_fractions": [
+    0.147,
+    0.2106,
+    0.3563,
+    0.0677,
+    0.2184
+  ],
+  "target_avg_cycles": 96.0,
+  "achieved_avg_cycles": 96.0,
+  "n_rows_calibrated": 57344,
+  "per_module_fractions": {
+    "blocks.0.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0,
+        0.0039,
+        0.9961
+      ],
+      "avg_cycles": 64.06,
+      "n_rows": 512
+    },
+    "blocks.0.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "avg_cycles": 64.0,
+      "n_rows": 512
+    },
+    "blocks.0.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0371,
+        0.168,
+        0.7949
+      ],
+      "avg_cycles": 67.88,
+      "n_rows": 512
+    },
+    "blocks.0.mlp.fc2": {
+      "level_fractions": [
+        0.3887,
+        0.541,
+        0.0703,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 117.09,
+      "n_rows": 512
+    },
+    "blocks.1.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "avg_cycles": 64.0,
+      "n_rows": 512
+    },
+    "blocks.1.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "avg_cycles": 64.0,
+      "n_rows": 512
+    },
+    "blocks.1.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "avg_cycles": 64.0,
+      "n_rows": 512
+    },
+    "blocks.1.mlp.fc2": {
+      "level_fractions": [
+        0.0137,
+        0.1387,
+        0.416,
+        0.2227,
+        0.209
+      ],
+      "avg_cycles": 88.41,
+      "n_rows": 512
+    },
+    "blocks.2.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0059,
+        0.0176,
+        0.9766
+      ],
+      "avg_cycles": 64.47,
+      "n_rows": 512
+    },
+    "blocks.2.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "avg_cycles": 64.0,
+      "n_rows": 512
+    },
+    "blocks.2.mlp.fc1": {
+      "level_fractions": [
+        0.2305,
+        0.5293,
+        0.1914,
+        0.0293,
+        0.0195
+      ],
+      "avg_cycles": 110.75,
+      "n_rows": 512
+    },
+    "blocks.2.mlp.fc2": {
+      "level_fractions": [
+        0.1953,
+        0.5176,
+        0.2559,
+        0.0273,
+        0.0039
+      ],
+      "avg_cycles": 109.97,
+      "n_rows": 512
+    },
+    "blocks.3.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0352,
+        0.0293,
+        0.9355
+      ],
+      "avg_cycles": 65.59,
+      "n_rows": 512
+    },
+    "blocks.3.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "avg_cycles": 64.0,
+      "n_rows": 512
+    },
+    "blocks.3.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.002,
+        0.0039,
+        0.9941
+      ],
+      "avg_cycles": 64.12,
+      "n_rows": 512
+    },
+    "blocks.3.mlp.fc2": {
+      "level_fractions": [
+        0.0,
+        0.043,
+        0.2734,
+        0.2773,
+        0.4062
+      ],
+      "avg_cycles": 79.25,
+      "n_rows": 512
+    },
+    "blocks.4.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.002,
+        0.1016,
+        0.0996,
+        0.7969
+      ],
+      "avg_cycles": 68.94,
+      "n_rows": 512
+    },
+    "blocks.4.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "avg_cycles": 64.0,
+      "n_rows": 512
+    },
+    "blocks.4.mlp.fc1": {
+      "level_fractions": [
+        0.0352,
+        0.2676,
+        0.5195,
+        0.1113,
+        0.0664
+      ],
+      "avg_cycles": 97.5,
+      "n_rows": 512
+    },
+    "blocks.4.mlp.fc2": {
+      "level_fractions": [
+        0.3926,
+        0.4707,
+        0.1348,
+        0.002,
+        0.0
+      ],
+      "avg_cycles": 116.06,
+      "n_rows": 512
+    },
+    "blocks.5.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.0059,
+        0.1641,
+        0.2656,
+        0.5645
+      ],
+      "avg_cycles": 73.78,
+      "n_rows": 512
+    },
+    "blocks.5.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0078,
+        0.1035,
+        0.1113,
+        0.7773
+      ],
+      "avg_cycles": 69.47,
+      "n_rows": 512
+    },
+    "blocks.5.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.1387,
+        0.6367,
+        0.1367,
+        0.0879
+      ],
+      "avg_cycles": 93.22,
+      "n_rows": 512
+    },
+    "blocks.5.mlp.fc2": {
+      "level_fractions": [
+        0.4531,
+        0.4199,
+        0.123,
+        0.0039,
+        0.0
+      ],
+      "avg_cycles": 117.16,
+      "n_rows": 512
+    },
+    "blocks.6.attn.qkv": {
+      "level_fractions": [
+        0.0156,
+        0.3281,
+        0.5723,
+        0.041,
+        0.043
+      ],
+      "avg_cycles": 99.72,
+      "n_rows": 512
+    },
+    "blocks.6.attn.proj": {
+      "level_fractions": [
+        0.0176,
+        0.1797,
+        0.5898,
+        0.1094,
+        0.1035
+      ],
+      "avg_cycles": 94.38,
+      "n_rows": 512
+    },
+    "blocks.6.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.0488,
+        0.5781,
+        0.209,
+        0.1641
+      ],
+      "avg_cycles": 88.19,
+      "n_rows": 512
+    },
+    "blocks.6.mlp.fc2": {
+      "level_fractions": [
+        0.4277,
+        0.457,
+        0.1152,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 117.0,
+      "n_rows": 512
+    },
+    "blocks.7.attn.qkv": {
+      "level_fractions": [
+        0.0059,
+        0.1484,
+        0.6699,
+        0.1133,
+        0.0625
+      ],
+      "avg_cycles": 94.75,
+      "n_rows": 512
+    },
+    "blocks.7.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.002,
+        0.0742,
+        0.1055,
+        0.8184
+      ],
+      "avg_cycles": 68.16,
+      "n_rows": 512
+    },
+    "blocks.7.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.1406,
+        0.6328,
+        0.1191,
+        0.1074
+      ],
+      "avg_cycles": 92.91,
+      "n_rows": 512
+    },
+    "blocks.7.mlp.fc2": {
+      "level_fractions": [
+        0.3945,
+        0.4258,
+        0.1738,
+        0.0059,
+        0.0
+      ],
+      "avg_cycles": 115.34,
+      "n_rows": 512
+    },
+    "blocks.8.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.0547,
+        0.6602,
+        0.1426,
+        0.1426
+      ],
+      "avg_cycles": 90.03,
+      "n_rows": 512
+    },
+    "blocks.8.attn.proj": {
+      "level_fractions": [
+        0.002,
+        0.0254,
+        0.1328,
+        0.0801,
+        0.7598
+      ],
+      "avg_cycles": 70.88,
+      "n_rows": 512
+    },
+    "blocks.8.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.1445,
+        0.6836,
+        0.1348,
+        0.0371
+      ],
+      "avg_cycles": 94.97,
+      "n_rows": 512
+    },
+    "blocks.8.mlp.fc2": {
+      "level_fractions": [
+        0.3047,
+        0.4883,
+        0.2012,
+        0.002,
+        0.0039
+      ],
+      "avg_cycles": 113.41,
+      "n_rows": 512
+    },
+    "blocks.9.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.0723,
+        0.5078,
+        0.1504,
+        0.2695
+      ],
+      "avg_cycles": 86.12,
+      "n_rows": 512
+    },
+    "blocks.9.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0293,
+        0.334,
+        0.2363,
+        0.4004
+      ],
+      "avg_cycles": 79.88,
+      "n_rows": 512
+    },
+    "blocks.9.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.0781,
+        0.7695,
+        0.1055,
+        0.0469
+      ],
+      "avg_cycles": 94.06,
+      "n_rows": 512
+    },
+    "blocks.9.mlp.fc2": {
+      "level_fractions": [
+        0.3574,
+        0.4551,
+        0.1719,
+        0.0156,
+        0.0
+      ],
+      "avg_cycles": 114.47,
+      "n_rows": 512
+    },
+    "blocks.10.attn.qkv": {
+      "level_fractions": [
+        0.0176,
+        0.3633,
+        0.5938,
+        0.0215,
+        0.0039
+      ],
+      "avg_cycles": 101.91,
+      "n_rows": 512
+    },
+    "blocks.10.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0391,
+        0.377,
+        0.1055,
+        0.4785
+      ],
+      "avg_cycles": 79.62,
+      "n_rows": 512
+    },
+    "blocks.10.mlp.fc1": {
+      "level_fractions": [
+        0.041,
+        0.3438,
+        0.5391,
+        0.0586,
+        0.0176
+      ],
+      "avg_cycles": 101.31,
+      "n_rows": 512
+    },
+    "blocks.10.mlp.fc2": {
+      "level_fractions": [
+        0.5195,
+        0.3984,
+        0.0801,
+        0.002,
+        0.0
+      ],
+      "avg_cycles": 118.97,
+      "n_rows": 512
+    },
+    "blocks.11.attn.qkv": {
+      "level_fractions": [
+        0.0215,
+        0.2676,
+        0.6797,
+        0.0254,
+        0.0059
+      ],
+      "avg_cycles": 100.38,
+      "n_rows": 512
+    },
+    "blocks.11.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0801,
+        0.6367,
+        0.1992,
+        0.084
+      ],
+      "avg_cycles": 91.41,
+      "n_rows": 512
+    },
+    "blocks.11.mlp.fc1": {
+      "level_fractions": [
+        0.002,
+        0.1992,
+        0.7227,
+        0.0566,
+        0.0195
+      ],
+      "avg_cycles": 97.72,
+      "n_rows": 512
+    },
+    "blocks.11.mlp.fc2": {
+      "level_fractions": [
+        0.334,
+        0.4785,
+        0.1758,
+        0.0117,
+        0.0
+      ],
+      "avg_cycles": 114.16,
+      "n_rows": 512
+    },
+    "blocks.12.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.0098,
+        0.6934,
+        0.1621,
+        0.1348
+      ],
+      "avg_cycles": 89.25,
+      "n_rows": 512
+    },
+    "blocks.12.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0293,
+        0.1211,
+        0.0898,
+        0.7598
+      ],
+      "avg_cycles": 70.72,
+      "n_rows": 512
+    },
+    "blocks.12.mlp.fc1": {
+      "level_fractions": [
+        0.0156,
+        0.2285,
+        0.6348,
+        0.0879,
+        0.0332
+      ],
+      "avg_cycles": 97.69,
+      "n_rows": 512
+    },
+    "blocks.12.mlp.fc2": {
+      "level_fractions": [
+        0.3496,
+        0.4512,
+        0.1973,
+        0.002,
+        0.0
+      ],
+      "avg_cycles": 114.38,
+      "n_rows": 512
+    },
+    "blocks.13.attn.qkv": {
+      "level_fractions": [
+        0.0586,
+        0.4551,
+        0.4766,
+        0.0098,
+        0.0
+      ],
+      "avg_cycles": 105.0,
+      "n_rows": 512
+    },
+    "blocks.13.attn.proj": {
+      "level_fractions": [
+        0.0059,
+        0.1543,
+        0.6602,
+        0.1191,
+        0.0605
+      ],
+      "avg_cycles": 94.81,
+      "n_rows": 512
+    },
+    "blocks.13.mlp.fc1": {
+      "level_fractions": [
+        0.0117,
+        0.082,
+        0.5645,
+        0.1445,
+        0.1973
+      ],
+      "avg_cycles": 89.06,
+      "n_rows": 512
+    },
+    "blocks.13.mlp.fc2": {
+      "level_fractions": [
+        0.3203,
+        0.4434,
+        0.2227,
+        0.0059,
+        0.0078
+      ],
+      "avg_cycles": 113.0,
+      "n_rows": 512
+    },
+    "blocks.14.attn.qkv": {
+      "level_fractions": [
+        0.002,
+        0.0332,
+        0.7285,
+        0.1445,
+        0.0918
+      ],
+      "avg_cycles": 91.34,
+      "n_rows": 512
+    },
+    "blocks.14.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0176,
+        0.1953,
+        0.1055,
+        0.6816
+      ],
+      "avg_cycles": 72.78,
+      "n_rows": 512
+    },
+    "blocks.14.mlp.fc1": {
+      "level_fractions": [
+        0.0039,
+        0.0957,
+        0.6973,
+        0.0996,
+        0.1035
+      ],
+      "avg_cycles": 92.75,
+      "n_rows": 512
+    },
+    "blocks.14.mlp.fc2": {
+      "level_fractions": [
+        0.2617,
+        0.4688,
+        0.2598,
+        0.0039,
+        0.0059
+      ],
+      "avg_cycles": 111.62,
+      "n_rows": 512
+    },
+    "blocks.15.attn.qkv": {
+      "level_fractions": [
+        0.0098,
+        0.2617,
+        0.6914,
+        0.0332,
+        0.0039
+      ],
+      "avg_cycles": 99.84,
+      "n_rows": 512
+    },
+    "blocks.15.attn.proj": {
+      "level_fractions": [
+        0.0312,
+        0.252,
+        0.666,
+        0.043,
+        0.0078
+      ],
+      "avg_cycles": 100.09,
+      "n_rows": 512
+    },
+    "blocks.15.mlp.fc1": {
+      "level_fractions": [
+        0.002,
+        0.1035,
+        0.627,
+        0.166,
+        0.1016
+      ],
+      "avg_cycles": 91.81,
+      "n_rows": 512
+    },
+    "blocks.15.mlp.fc2": {
+      "level_fractions": [
+        0.252,
+        0.5527,
+        0.1855,
+        0.0039,
+        0.0059
+      ],
+      "avg_cycles": 112.66,
+      "n_rows": 512
+    },
+    "blocks.16.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.1387,
+        0.752,
+        0.0508,
+        0.0586
+      ],
+      "avg_cycles": 95.53,
+      "n_rows": 512
+    },
+    "blocks.16.attn.proj": {
+      "level_fractions": [
+        0.0039,
+        0.0547,
+        0.3086,
+        0.0957,
+        0.5371
+      ],
+      "avg_cycles": 78.28,
+      "n_rows": 512
+    },
+    "blocks.16.mlp.fc1": {
+      "level_fractions": [
+        0.0059,
+        0.1777,
+        0.6172,
+        0.127,
+        0.0723
+      ],
+      "avg_cycles": 94.69,
+      "n_rows": 512
+    },
+    "blocks.16.mlp.fc2": {
+      "level_fractions": [
+        0.3086,
+        0.5195,
+        0.1602,
+        0.0098,
+        0.002
+      ],
+      "avg_cycles": 113.97,
+      "n_rows": 512
+    },
+    "blocks.17.attn.qkv": {
+      "level_fractions": [
+        0.0059,
+        0.1309,
+        0.7656,
+        0.0781,
+        0.0195
+      ],
+      "avg_cycles": 96.41,
+      "n_rows": 512
+    },
+    "blocks.17.attn.proj": {
+      "level_fractions": [
+        0.0625,
+        0.3301,
+        0.5977,
+        0.0098,
+        0.0
+      ],
+      "avg_cycles": 103.12,
+      "n_rows": 512
+    },
+    "blocks.17.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.0273,
+        0.5234,
+        0.1836,
+        0.2656
+      ],
+      "avg_cycles": 85.0,
+      "n_rows": 512
+    },
+    "blocks.17.mlp.fc2": {
+      "level_fractions": [
+        0.3555,
+        0.4883,
+        0.1562,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 115.19,
+      "n_rows": 512
+    },
+    "blocks.18.attn.qkv": {
+      "level_fractions": [
+        0.0098,
+        0.4551,
+        0.5195,
+        0.0137,
+        0.002
+      ],
+      "avg_cycles": 103.31,
+      "n_rows": 512
+    },
+    "blocks.18.attn.proj": {
+      "level_fractions": [
+        0.0117,
+        0.1152,
+        0.3984,
+        0.1055,
+        0.3691
+      ],
+      "avg_cycles": 84.72,
+      "n_rows": 512
+    },
+    "blocks.18.mlp.fc1": {
+      "level_fractions": [
+        0.002,
+        0.0508,
+        0.5781,
+        0.1836,
+        0.1855
+      ],
+      "avg_cycles": 88.0,
+      "n_rows": 512
+    },
+    "blocks.18.mlp.fc2": {
+      "level_fractions": [
+        0.3066,
+        0.4434,
+        0.2402,
+        0.0059,
+        0.0039
+      ],
+      "avg_cycles": 112.69,
+      "n_rows": 512
+    },
+    "blocks.19.attn.qkv": {
+      "level_fractions": [
+        0.0039,
+        0.1777,
+        0.7324,
+        0.0605,
+        0.0254
+      ],
+      "avg_cycles": 97.19,
+      "n_rows": 512
+    },
+    "blocks.19.attn.proj": {
+      "level_fractions": [
+        0.0645,
+        0.3828,
+        0.5234,
+        0.0273,
+        0.002
+      ],
+      "avg_cycles": 103.69,
+      "n_rows": 512
+    },
+    "blocks.19.mlp.fc1": {
+      "level_fractions": [
+        0.002,
+        0.0254,
+        0.4238,
+        0.3203,
+        0.2285
+      ],
+      "avg_cycles": 84.03,
+      "n_rows": 512
+    },
+    "blocks.19.mlp.fc2": {
+      "level_fractions": [
+        0.3867,
+        0.4043,
+        0.2012,
+        0.0039,
+        0.0039
+      ],
+      "avg_cycles": 114.66,
+      "n_rows": 512
+    },
+    "blocks.20.attn.qkv": {
+      "level_fractions": [
+        0.0039,
+        0.2227,
+        0.6523,
+        0.0742,
+        0.0469
+      ],
+      "avg_cycles": 97.0,
+      "n_rows": 512
+    },
+    "blocks.20.attn.proj": {
+      "level_fractions": [
+        0.0059,
+        0.1113,
+        0.4082,
+        0.084,
+        0.3906
+      ],
+      "avg_cycles": 84.12,
+      "n_rows": 512
+    },
+    "blocks.20.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.0391,
+        0.4688,
+        0.25,
+        0.2422
+      ],
+      "avg_cycles": 84.88,
+      "n_rows": 512
+    },
+    "blocks.20.mlp.fc2": {
+      "level_fractions": [
+        0.3066,
+        0.4922,
+        0.1953,
+        0.0059,
+        0.0
+      ],
+      "avg_cycles": 113.59,
+      "n_rows": 512
+    },
+    "blocks.21.attn.qkv": {
+      "level_fractions": [
+        0.002,
+        0.0586,
+        0.748,
+        0.127,
+        0.0645
+      ],
+      "avg_cycles": 92.91,
+      "n_rows": 512
+    },
+    "blocks.21.attn.proj": {
+      "level_fractions": [
+        0.0977,
+        0.4121,
+        0.4609,
+        0.0254,
+        0.0039
+      ],
+      "avg_cycles": 105.19,
+      "n_rows": 512
+    },
+    "blocks.21.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.0098,
+        0.6582,
+        0.2168,
+        0.1152
+      ],
+      "avg_cycles": 89.0,
+      "n_rows": 512
+    },
+    "blocks.21.mlp.fc2": {
+      "level_fractions": [
+        0.5234,
+        0.3809,
+        0.0918,
+        0.0039,
+        0.0
+      ],
+      "avg_cycles": 118.78,
+      "n_rows": 512
+    },
+    "blocks.22.attn.qkv": {
+      "level_fractions": [
+        0.0156,
+        0.1562,
+        0.7129,
+        0.0605,
+        0.0547
+      ],
+      "avg_cycles": 96.28,
+      "n_rows": 512
+    },
+    "blocks.22.attn.proj": {
+      "level_fractions": [
+        0.0,
+        0.0,
+        0.002,
+        0.0,
+        0.998
+      ],
+      "avg_cycles": 64.06,
+      "n_rows": 512
+    },
+    "blocks.22.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.1504,
+        0.7344,
+        0.0879,
+        0.0273
+      ],
+      "avg_cycles": 96.12,
+      "n_rows": 512
+    },
+    "blocks.22.mlp.fc2": {
+      "level_fractions": [
+        0.4121,
+        0.4668,
+        0.1211,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 116.66,
+      "n_rows": 512
+    },
+    "blocks.23.attn.qkv": {
+      "level_fractions": [
+        0.002,
+        0.0957,
+        0.7969,
+        0.0684,
+        0.0371
+      ],
+      "avg_cycles": 95.31,
+      "n_rows": 512
+    },
+    "blocks.23.attn.proj": {
+      "level_fractions": [
+        0.0723,
+        0.3594,
+        0.5488,
+        0.0176,
+        0.002
+      ],
+      "avg_cycles": 103.72,
+      "n_rows": 512
+    },
+    "blocks.23.mlp.fc1": {
+      "level_fractions": [
+        0.0,
+        0.1562,
+        0.7969,
+        0.0293,
+        0.0176
+      ],
+      "avg_cycles": 97.47,
+      "n_rows": 512
+    },
+    "blocks.23.mlp.fc2": {
+      "level_fractions": [
+        0.3867,
+        0.4785,
+        0.1309,
+        0.0039,
+        0.0
+      ],
+      "avg_cycles": 115.97,
+      "n_rows": 512
+    },
+    "blocks.24.attn.qkv": {
+      "level_fractions": [
+        0.1289,
+        0.6602,
+        0.2109,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 110.69,
+      "n_rows": 512
+    },
+    "blocks.24.attn.proj": {
+      "level_fractions": [
+        0.293,
+        0.4414,
+        0.2637,
+        0.002,
+        0.0
+      ],
+      "avg_cycles": 112.41,
+      "n_rows": 512
+    },
+    "blocks.24.mlp.fc1": {
+      "level_fractions": [
+        0.002,
+        0.2793,
+        0.7051,
+        0.0117,
+        0.002
+      ],
+      "avg_cycles": 100.28,
+      "n_rows": 512
+    },
+    "blocks.24.mlp.fc2": {
+      "level_fractions": [
+        0.916,
+        0.084,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 126.66,
+      "n_rows": 512
+    },
+    "blocks.25.attn.qkv": {
+      "level_fractions": [
+        0.0078,
+        0.3516,
+        0.5996,
+        0.0391,
+        0.002
+      ],
+      "avg_cycles": 101.19,
+      "n_rows": 512
+    },
+    "blocks.25.attn.proj": {
+      "level_fractions": [
+        0.3574,
+        0.4668,
+        0.1758,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 114.91,
+      "n_rows": 512
+    },
+    "blocks.25.mlp.fc1": {
+      "level_fractions": [
+        0.7637,
+        0.2344,
+        0.002,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 124.19,
+      "n_rows": 512
+    },
+    "blocks.25.mlp.fc2": {
+      "level_fractions": [
+        0.998,
+        0.002,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 127.97,
+      "n_rows": 512
+    },
+    "blocks.26.attn.qkv": {
+      "level_fractions": [
+        0.334,
+        0.6387,
+        0.0273,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 116.91,
+      "n_rows": 512
+    },
+    "blocks.26.attn.proj": {
+      "level_fractions": [
+        0.2578,
+        0.418,
+        0.3008,
+        0.0195,
+        0.0039
+      ],
+      "avg_cycles": 110.5,
+      "n_rows": 512
+    },
+    "blocks.26.mlp.fc1": {
+      "level_fractions": [
+        0.9492,
+        0.0195,
+        0.0312,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 126.69,
+      "n_rows": 512
+    },
+    "blocks.26.mlp.fc2": {
+      "level_fractions": [
+        0.9531,
+        0.0469,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 127.25,
+      "n_rows": 512
+    },
+    "blocks.27.attn.qkv": {
+      "level_fractions": [
+        0.0,
+        0.0176,
+        0.5254,
+        0.2402,
+        0.2168
+      ],
+      "avg_cycles": 85.5,
+      "n_rows": 512
+    },
+    "blocks.27.attn.proj": {
+      "level_fractions": [
+        0.0078,
+        0.1113,
+        0.6562,
+        0.1602,
+        0.0645
+      ],
+      "avg_cycles": 93.41,
+      "n_rows": 512
+    },
+    "blocks.27.mlp.fc1": {
+      "level_fractions": [
+        0.6582,
+        0.3105,
+        0.0312,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 122.03,
+      "n_rows": 512
+    },
+    "blocks.27.mlp.fc2": {
+      "level_fractions": [
+        0.9805,
+        0.0195,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "avg_cycles": 127.69,
+      "n_rows": 512
+    }
+  }
+}
