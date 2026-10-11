@@ -31,12 +31,8 @@ _HALVE = os.environ.get("SC_HALVE") == "1"
 # SC_PREC=7|8 sets the quantization grid; SC_MP_FIXED_PREC=1 keeps sc_prec
 #   pinned instead of deriving it per level (both variants are to be measured).
 _MP_CONFIG = None
-# Per-(operator, block) fractions. A single global fraction triple spends the
-# SAME average budget on every operator and block, so the only mixing it does
-# is within a layer by |x| magnitude — at matched budget that measured no
-# better than uniform. SC_MP_PER_MODULE points at a calibration JSON whose
-# "per_module_fractions" keeps the split the Lagrangian solver actually
-# produced, letting budget flow across layers/operators.
+# SC_MP_PER_MODULE loads each operator/block's calibrated dispatch policy.
+# Historical policies use fractions; the current search uses group thresholds.
 _MP_PER_MODULE = None      # {(op, block_idx): [fractions]}
 if os.environ.get("SC_MP_CONFIG"):
     import json as _json
@@ -56,9 +52,7 @@ if os.environ.get("SC_MP_PER_MODULE"):
             continue
         for _suf, _op in _SUFFIX_TO_OP.items():
             if _name.endswith(_suf):
-                # Sensitivity calibration showed the metric-weight correlation
-                # flips sign per module, so each module carries its own
-                # ordering direction alongside its fractions.
+                # Historical policies may specify ordering and protected channels.
                 _MP_PER_MODULE[(_op, int(_m.group(1)))] = {
                     "fractions": _d.get("level_fractions"),
                     # scmp_llm's full mechanism: absolute thresholds on the
@@ -66,6 +60,7 @@ if os.environ.get("SC_MP_PER_MODULE"):
                     # channels split out at a fixed high stream length with
                     # row dispatch applied only to the residual columns.
                     "thresholds": _d.get("thresholds"),
+                    "group_thresholds": _d.get("group_thresholds"),
                     "protected": _d.get("protected") or [],
                     "protect_sl": _d.get("protect_sl"),
                     "invert": bool(_d.get("invert", False))}
@@ -99,12 +94,7 @@ def _resolve_sc_prec(stoc_len: int, default_prec: int) -> int:
 
 def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
                        op=None, block_idx=None):
-    """Mixed-precision path: bucket rows by importance, one sc_matmul per level.
-
-    Mirrors scmp_diffusion's SCLinear MP forward — rows ranked by |x|.amax(-1),
-    quantile-bucketed into MPConfig.stoc_len_levels, each bucket run at its own
-    stream length, results scattered back.
-    """
+    """SC dispatch with per-row or per-(row, chunk) stream lengths."""
     from scmp_kernels.mp import classify_rows_by_metric
 
     in_dim = x_flat.shape[-1]
@@ -114,6 +104,7 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
     fractions = _MP_CONFIG.level_fractions
     mod_invert = False
     thresholds = None
+    group_thresholds = None
     prot_idx = None
     prot_sl = None
     if _MP_PER_MODULE is not None and op is not None and block_idx is not None:
@@ -122,6 +113,7 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
             fractions = _ent["fractions"] or fractions
             mod_invert = _ent["invert"]
             thresholds = _ent.get("thresholds")
+            group_thresholds = _ent.get("group_thresholds")
             _pl = _ent.get("protected")
             if _pl:
                 prot_idx = torch.as_tensor(sorted(set(int(i) for i in _pl)),
@@ -159,7 +151,7 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
         if thresholds is not None:
             raise ValueError(
                 "Per-row calibrated thresholds cannot be reused for per-group "
-                "dispatch; use a fraction-calibrated MP config.")
+                "dispatch; use group_thresholds.")
         chunk_d = _MP_GROUP_CHUNK_D
         if in_dim % chunk_d:
             raise ValueError(
@@ -170,12 +162,24 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
         metric_x = x_flat.abs()
         group_metric = metric_x.view(
             x_flat.shape[0], n_chunks, chunk_d).amax(dim=-1)
-        if os.environ.get("SC_MP_INVERT") == "1" or mod_invert:
-            group_metric = -group_metric
-        group_assignment = classify_rows_by_metric(
-            group_metric.reshape(-1), _MP_CONFIG.stoc_len_levels, fractions)
-        rung_table = group_assignment.row_levels.reshape(
-            x_flat.shape[0], n_chunks).to(torch.int32)
+        if group_thresholds is not None:
+            # Upstream per-(row,chunk) rule: normalize over this FULL call,
+            # then bucketize against learned numeric (not quantile) cuts.
+            levels = list(_MP_CONFIG.stoc_len_levels)
+            if (levels != sorted(set(levels)) or len(group_thresholds) != len(levels)-1
+                    or list(group_thresholds) != sorted(group_thresholds)
+                    or mod_invert or os.environ.get("SC_MP_INVERT") == "1"):
+                raise ValueError('Invalid ascending per-group threshold policy')
+            m = (group_metric-group_metric.min()) / (group_metric.max()-group_metric.min()).clamp_min(1e-8)
+            rung_table = torch.bucketize(m.contiguous(), torch.as_tensor(
+                group_thresholds, device=m.device, dtype=m.dtype)).to(torch.int32)
+        else:
+            if os.environ.get("SC_MP_INVERT") == "1" or mod_invert:
+                group_metric = -group_metric
+            group_assignment = classify_rows_by_metric(
+                group_metric.reshape(-1), _MP_CONFIG.stoc_len_levels, fractions)
+            rung_table = group_assignment.row_levels.reshape(
+                x_flat.shape[0], n_chunks).to(torch.int32)
         levels = list(_MP_CONFIG.stoc_len_levels)
         max_sl = max(levels)
         sp = _resolve_sc_prec(max_sl, sc_prec)
@@ -197,29 +201,13 @@ def _mp_linear_forward(x_flat, w, linear, orig_shape, sc_prec, out_dtype,
             out = out + linear.bias.float()
         return out.reshape(*orig_shape[:-1], -1).to(out_dtype)
 
-    # Rank rows by the magnitude the kernel actually quantises. With
-    # SmoothQuant attached, sc_matmul divides x by the per-channel scales
-    # before per-row quantisation, so a row's SC error is set by
-    # max_j |x_j / s_j| — not by max_j |x_j|. The scales spread ~5x (up to
-    # 30x) across channels within one linear, so ranking on the raw amax
-    # systematically misorders rows and hands the long streams to the wrong
-    # ones; that misordering costs more than mixing gains (a wrong split is
-    # WORSE than uniform, see the shuffled-bucket control in the error-grid
-    # analysis). Rank on the smoothed activation instead.
-    # Historical E3 n=100 replication ranked the pre-SmoothQuant activations.
-    # Keep that behavior available for exact result reproduction while leaving
-    # the corrected deployment ranking as the default.
+    # Row metric: SmoothQuant-normalized absmax. Historical reproduction
+    # configurations select raw absmax through SC_MP_LEGACY_RAW_AMAX.
     if smooth is not None and os.environ.get("SC_MP_LEGACY_RAW_AMAX") != "1":
         row_metric = (x_flat / smooth.to(x_flat.dtype)).abs().amax(dim=-1)
     else:
         row_metric = x_flat.abs().amax(dim=-1)
-    # SC_MP_INVERT=1 hands the long streams to the LOW-metric rows instead.
-    # Motivation: the more accurately rows are ranked by absolute matmul error
-    # (smoothed amax), the worse the end-to-end quality gets — which points to
-    # the PSNR-optimal allocation running in the opposite direction: per-row
-    # quantisation roughly equalises relative error, so high-magnitude rows
-    # carry structure that is robust to SC noise while low-magnitude detail
-    # rows are the quality bottleneck.
+    # Explicit inversion assigns longer streams to lower-metric rows.
     if os.environ.get("SC_MP_INVERT") == "1" or mod_invert:
         row_metric = -row_metric
     if thresholds is not None:

@@ -28,8 +28,17 @@ import time
 import traceback
 from pathlib import Path
 
+if os.environ.get('SC_SEARCH_RECIPE'):
+    from evaluate.search_recipe import SearchRecipe,configure_float_precision
+    _recipe = SearchRecipe(**json.loads(os.environ['SC_SEARCH_RECIPE']))
+    # Preserve the explicit policy and trace while pinning numerical settings.
+    from evaluate.search_recipe import runtime_settings
+    os.environ.update(runtime_settings(_recipe))
+
 import numpy as np
 import torch
+if os.environ.get('SC_SEARCH_RECIPE'):
+    configure_float_precision(torch)
 import torch.nn.functional as F
 import imageio
 from einops import rearrange

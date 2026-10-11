@@ -1,20 +1,4 @@
-"""Bounded deployable policy space and exact quantile cycle accounting."""
-
-
-def policies(levels):
-    out = []
-    for i in range(len(levels)):
-        f = [0.0] * len(levels)
-        f[i] = 1.0
-        out.append(dict(level_fractions=f, invert=False))
-    for i in range(len(levels)):
-        for j in range(i + 1, len(levels)):
-            for fraction in (.25, .5, .75):
-                f = [0.0] * len(levels)
-                f[i], f[j] = fraction, 1 - fraction
-                for invert in (False, True):
-                    out.append(dict(level_fractions=f, invert=invert))
-    return out
+"""Exact fractional-dispatch cycle accounting."""
 
 
 def group_counts(n_groups, fractions):
